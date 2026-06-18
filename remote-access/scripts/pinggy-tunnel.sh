@@ -11,7 +11,7 @@ log() {
 }
 
 cleanup() {
-    rm -f "$PID_FILE" "$LAST_URL_FILE"
+    rm -f "$PID_FILE" "$LAST_URL_FILE" "$URL_FILE" "${XDG_RUNTIME_DIR:-/tmp}/pinggy_tunnel_start"
     log "Tunnel stopped"
 }
 trap cleanup EXIT
