@@ -1,0 +1,16 @@
+# Secrets
+*.conf
+!.example
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Editors
+*.swp
+*.swo
+*~
+
+# Python
+__pycache__/
+*.pyc

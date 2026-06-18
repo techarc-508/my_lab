@@ -1,0 +1,16 @@
+# ── Notification config ──
+# Copy this to ~/.config/tunnel/notify.conf and fill in your values.
+
+# --- ntfy.sh ---
+# Pick a unique topic name (e.g., "yourname-cmd").
+# Subscribe to this topic in the ntfy.sh app on your phone.
+NTFY_CMD_TOPIC="your-topic-here"
+
+# --- Telegram Bot (optional) ---
+# 1. Message @BotFather on Telegram, create a bot, get the token.
+# 2. Message your bot once, then visit:
+#    https://api.telegram.org/bot<TOKEN>/getUpdates
+#    to find your chat_id.
+# 3. Uncomment and fill in below:
+# TELEGRAM_BOT_TOKEN=""
+# TELEGRAM_CHAT_ID=""

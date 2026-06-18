@@ -1,0 +1,14 @@
+[Unit]
+Description=ntfy.sh command listener — on-demand Pinggy tunnel via phone
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+Environment=PATH=%h/.local/bin:/usr/local/bin:/usr/bin:/bin
+ExecStart=%h/.local/bin/ntfy-cmd-listener.py
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=default.target
