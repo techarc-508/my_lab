@@ -40,8 +40,12 @@ while true; do
                 echo "$ADDRESS" > "$LAST_URL_FILE"
                 # Record start timestamp for countdown (resets on each reconnect)
                 date +%s > "${XDG_RUNTIME_DIR:-/tmp}/pinggy_tunnel_start"
-                log "Endpoint changed to $ADDRESS — sending notification..."
-                NOTIFY_SCRIPT="$NOTIFY_SCRIPT" bash -c 'source "$0" "$@"' "$NOTIFY_SCRIPT" "$PORT" "$HOST" "Pinggy" &
+                # Notify only on reconnect (when LAST_URL had a previous value)
+                # Initial connection notification is handled by the listener
+                if [ -n "$LAST_URL" ]; then
+                    log "Endpoint changed to $ADDRESS — sending notification..."
+                    NOTIFY_SCRIPT="$NOTIFY_SCRIPT" bash -c 'source "$0" "$@"' "$NOTIFY_SCRIPT" "$PORT" "$HOST" "Pinggy" &
+                fi
             fi
         fi
     done

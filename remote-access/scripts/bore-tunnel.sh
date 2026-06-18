@@ -36,8 +36,12 @@ while true; do
             LAST_PORT="$(cat "$LAST_PORT_FILE" 2>/dev/null || echo "")"
             if [ "$PORT" != "$LAST_PORT" ]; then
                 echo "$PORT" > "$LAST_PORT_FILE"
-                log "Port changed to $PORT — sending notification..."
-                NOTIFY_SCRIPT="$NOTIFY_SCRIPT" bash -c 'source "$0" "$@"' "$NOTIFY_SCRIPT" "$PORT" "bore.pub" "Bore" &
+                # Notify only on reconnect (when LAST_PORT had a previous value)
+                # Initial connection notification is handled by the listener
+                if [ -n "$LAST_PORT" ]; then
+                    log "Port changed to $PORT — sending notification..."
+                    NOTIFY_SCRIPT="$NOTIFY_SCRIPT" bash -c 'source "$0" "$@"' "$NOTIFY_SCRIPT" "$PORT" "bore.pub" "Bore" &
+                fi
             fi
         fi
     done
