@@ -14,3 +14,28 @@ Thumbs.db
 # Python
 __pycache__/
 *.pyc
+*.pyo
+venv/
+.venv/
+*.egg-info/
+
+# Node
+node_modules/
+.vite/
+
+# Flask
+.flask_secret_key
+server/logs/
+server/.flask_secret_key
+
+# Audio / Media (not in git, packaged separately)
+server/downloads/**
+selfhosted/*/server/downloads/**
+
+# Build output
+**/dist/
+
+# IDE
+.idea/
+.vscode/
+*.sublime-*

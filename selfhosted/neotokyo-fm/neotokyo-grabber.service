@@ -1,0 +1,14 @@
+[Unit]
+Description=NEOTOKYO FM - Server (Flask + gunicorn + yt-dlp)
+After=network.target
+
+[Service]
+Type=simple
+User=pushpal
+WorkingDirectory=/mnt/data/projects/mini_radio/server
+ExecStart=/home/pushpal/.local/bin/gunicorn -c gunicorn.conf.py app:create_app()
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

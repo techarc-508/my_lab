@@ -1,0 +1,20 @@
+{
+  "name": "NEOTOKYO FM",
+  "image": "mcr.microsoft.com/devcontainers/universal:2",
+  "forwardPorts": [5050, 3000],
+  "portsAttributes": {
+    "5050": { "label": "Grabber API", "onAutoForward": "notify" },
+    "3000": { "label": "Player UI", "onAutoForward": "openBrowser" }
+  },
+  "postCreateCommand": "bash .devcontainer/setup.sh",
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        "dbaeumer.vscode-eslint",
+        "esbenp.prettier-vscode",
+        "bradlc.vscode-tailwindcss",
+        "ms-python.python"
+      ]
+    }
+  }
+}

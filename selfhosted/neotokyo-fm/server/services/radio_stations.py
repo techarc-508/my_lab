@@ -1,0 +1,123 @@
+import json, os, threading
+from config import BASE_DIR
+
+STATIONS_FILE = os.path.join(BASE_DIR, 'radio_stations.json')
+_stations_lock = threading.RLock()
+
+DEFAULT_STATIONS = [
+    # --- Synthwave (5) ---
+    {"name": "Nightride FM", "url": "https://stream.nightride.fm/nightride.mp3", "genre": "Synthwave"},
+    {"name": "SomaFM Vaporwaves", "url": "https://ice3.somafm.com/vaporwaves-128-mp3", "genre": "Synthwave"},
+    {"name": "FluxFM Elektro", "url": "https://streams.fluxfm.de/elektro/mp3-128/radiode", "genre": "Synthwave"},
+    {"name": "FluxFM Club", "url": "https://streams.fluxfm.de/club/mp3-128/radiode", "genre": "Synthwave"},
+    {"name": "FluxFM Sound of Berlin", "url": "https://streams.fluxfm.de/sofabe/mp3-128/radiode", "genre": "Synthwave"},
+
+    # --- Pop (10) ---
+    {"name": "FluxFM", "url": "https://streams.fluxfm.de/live/mp3-128/radiode", "genre": "Pop"},
+    {"name": "FluxFM Black", "url": "https://streams.fluxfm.de/black/mp3-128/radiode", "genre": "Pop"},
+    {"name": "Virgin Radio UK", "url": "https://radio.virginradio.co.uk/stream", "genre": "Pop"},
+    {"name": "Heart UK", "url": "http://ice-sov.musicradio.com/HeartLondonMP3", "genre": "Pop"},
+    {"name": "Smooth Radio UK", "url": "http://media-ice.musicradio.com/SmoothLondonMP3", "genre": "Pop"},
+    {"name": "SomaFM Indie Pop", "url": "https://ice3.somafm.com/indiepop-128-mp3", "genre": "Pop"},
+    {"name": "SomaFM Covers", "url": "https://ice3.somafm.com/covers-128-mp3", "genre": "Pop"},
+    {"name": "SomaFM The Trip", "url": "https://ice3.somafm.com/thetrip-128-mp3", "genre": "Pop"},
+    {"name": "SomaFM Specials", "url": "https://ice3.somafm.com/specials-128-mp3", "genre": "Pop"},
+    {"name": "laut.fm pop", "url": "https://stream.laut.fm/pop", "genre": "Pop"},
+
+    # --- Jazz (8) ---
+    {"name": "FIP Jazz", "url": "https://icecast.radiofrance.fr/fipjazz-midfi.mp3", "genre": "Jazz"},
+    {"name": "FluxFM Jazz", "url": "https://streams.fluxfm.de/jazz/mp3-128/radiode", "genre": "Jazz"},
+    {"name": "Radio Art Smooth Jazz", "url": "https://live.radioart.com/fSmooth_jazz.mp3", "genre": "Jazz"},
+    {"name": "SomaFM Secret Agent", "url": "https://ice3.somafm.com/secretagent-128-mp3", "genre": "Jazz"},
+    {"name": "SomaFM Illinois Street Lounge", "url": "https://ice3.somafm.com/illstreet-128-mp3", "genre": "Jazz"},
+    {"name": "SomaFM Sonic Universe", "url": "https://ice3.somafm.com/sonicuniverse-128-mp3", "genre": "Jazz"},
+    {"name": "laut.fm jazz", "url": "https://stream.laut.fm/jazz", "genre": "Jazz"},
+    {"name": "laut.fm swing", "url": "https://stream.laut.fm/swing", "genre": "Jazz"},
+
+    # --- Chill (9) ---
+    {"name": "SomaFM Groove Salad", "url": "https://ice3.somafm.com/groovesalad-128-mp3", "genre": "Chill"},
+    {"name": "SomaFM Lush", "url": "https://ice3.somafm.com/lush-128-mp3", "genre": "Chill"},
+    {"name": "SomaFM Drone Zone", "url": "https://ice3.somafm.com/dronezone-128-mp3", "genre": "Chill"},
+    {"name": "SomaFM Deep Space One", "url": "https://ice3.somafm.com/deepspaceone-128-mp3", "genre": "Chill"},
+    {"name": "SomaFM Suburbs of Goa", "url": "https://ice3.somafm.com/suburbsofgoa-128-mp3", "genre": "Chill"},
+    {"name": "FluxFM Chillhop", "url": "https://streams.fluxfm.de/chillhop/mp3-128/radiode", "genre": "Chill"},
+    {"name": "laut.fm chillout", "url": "https://stream.laut.fm/chillout", "genre": "Chill"},
+    {"name": "laut.fm lofi", "url": "https://stream.laut.fm/lofi", "genre": "Chill"},
+    {"name": "FluxFM Relax", "url": "https://streams.fluxfm.de/relax/mp3-128/radiode", "genre": "Chill"},
+
+    # --- World (8) ---
+    {"name": "FIP (France)", "url": "https://icecast.radiofrance.fr/fip-midfi.mp3", "genre": "World"},
+    {"name": "FIP World", "url": "https://icecast.radiofrance.fr/fipworld-midfi.mp3", "genre": "World"},
+    {"name": "FIP Groove", "url": "https://icecast.radiofrance.fr/fipgroove-midfi.mp3", "genre": "World"},
+    {"name": "FIP Reggae", "url": "https://icecast.radiofrance.fr/fipreggae-midfi.mp3", "genre": "World"},
+    {"name": "FIP Rock", "url": "https://icecast.radiofrance.fr/fiprock-midfi.mp3", "genre": "World"},
+    {"name": "NTS Radio", "url": "https://stream-relay-geo.ntslive.net/stream", "genre": "World"},
+    {"name": "Radio Seagull", "url": "http://stream.radioseagull.net:8000/seagull", "genre": "World"},
+    {"name": "laut.fm worldmusic", "url": "https://stream.laut.fm/worldmusic", "genre": "World"},
+
+    # --- 80s (4) ---
+    {"name": "SomaFM U80s", "url": "https://ice3.somafm.com/u80s-128-mp3", "genre": "80s"},
+    {"name": "FluxFM 80s", "url": "https://streams.fluxfm.de/80er/mp3-128/radiode", "genre": "80s"},
+    {"name": "laut.fm 80s", "url": "https://stream.laut.fm/80er", "genre": "80s"},
+    {"name": "laut.fm oldies", "url": "https://stream.laut.fm/oldies", "genre": "80s"},
+
+    # --- Bollywood (6) ---
+    {"name": "1.FM Bombay Beats", "url": "http://strm112.1.fm/bombaybeats_mobile_mp3", "genre": "Bollywood"},
+    {"name": "Bollywood Bangers", "url": "https://mml2.prostream.se/listen/bollywood_bangers/radio.mp3", "genre": "Bollywood"},
+    {"name": "Desi Hits 2000s", "url": "https://www.desizoneradio.com/relay2", "genre": "Bollywood"},
+    {"name": "ADRN Bollywood Classic", "url": "http://abm21.com.au:8000/CONTAINER115", "genre": "Bollywood"},
+    {"name": "ADRN Bollywood Mix", "url": "http://abm21.com.au:8000/CONTAINER116", "genre": "Bollywood"},
+    {"name": "ADRN Bollywood Today", "url": "http://abm21.com.au:8000/CONTAINER117", "genre": "Bollywood"},
+
+    # --- Bengali (4) ---
+    {"name": "Mixify Bengali Hits", "url": "https://server.mixify.in/listen/bangla/radio.mp3", "genre": "Bengali"},
+    {"name": "A2Z Radio", "url": "https://listen.radioking.com/radio/1743/stream/125", "genre": "Bengali"},
+    {"name": "Radio GoonGoon", "url": "https://audio.streamcast.xyz/listen/radiogoongoon/radio.mp3", "genre": "Bengali"},
+    {"name": "Mellow Bangla", "url": "https://radio.mellowbangla.com/stream", "genre": "Bengali"},
+
+    # --- Japanese (5) ---
+    {"name": "Anison FM", "url": "http://pool.anison.fm:9000/AniSonFM(320)?", "genre": "Japanese"},
+    {"name": "laut.fm anime", "url": "http://stream.laut.fm/animefm", "genre": "Japanese"},
+    {"name": "85.1 WAHH", "url": "https://radio.coolbirds.cc/listen/85.1_wahh/radio.mp3", "genre": "Japanese"},
+    {"name": "Asia Dream Japan Hits", "url": "https://quincy.torontocast.com:2020/stream.mp3", "genre": "Japanese"},
+    {"name": "J-Pop Sakura", "url": "http://quincy.torontocast.com:2070/stream.mp3", "genre": "Japanese"},
+
+    # --- Hip Hop (5) ---
+    {"name": "laut.fm hiphop", "url": "https://stream.laut.fm/hiphop", "genre": "Hip Hop"},
+    {"name": "laut.fm rap", "url": "https://stream.laut.fm/rap", "genre": "Hip Hop"},
+    {"name": "FluxFM Hip Hop", "url": "https://streams.fluxfm.de/hiphop/mp3-128/radiode", "genre": "Hip Hop"},
+    {"name": "laut.fm soul", "url": "https://stream.laut.fm/soul", "genre": "Hip Hop"},
+    {"name": "laut.fm deutschrap", "url": "https://stream.laut.fm/deutschrap", "genre": "Hip Hop"},
+
+    # --- Electronic (6) ---
+    {"name": "SomaFM Cliqhop", "url": "https://ice3.somafm.com/cliqhop-128-mp3", "genre": "Electronic"},
+    {"name": "SomaFM Digitalis", "url": "https://ice3.somafm.com/digitalis-128-mp3", "genre": "Electronic"},
+    {"name": "SomaFM Dub Step Beyond", "url": "https://ice3.somafm.com/dubstep-128-mp3", "genre": "Electronic"},
+    {"name": "SomaFM Space Station", "url": "https://ice3.somafm.com/spacestation-128-mp3", "genre": "Electronic"},
+    {"name": "SomaFM Mission Control", "url": "https://ice3.somafm.com/missioncontrol-128-mp3", "genre": "Electronic"},
+    {"name": "laut.fm techno", "url": "https://stream.laut.fm/techno", "genre": "Electronic"},
+
+    # --- Rock/Metal (5) ---
+    {"name": "Radio Paradise", "url": "https://stream.radioparadise.com/mp3-192", "genre": "Rock"},
+    {"name": "SomaFM BAGel Radio", "url": "https://ice3.somafm.com/bagel-128-mp3", "genre": "Rock"},
+    {"name": "SomaFM ThistleRadio", "url": "https://ice3.somafm.com/thistle-128-mp3", "genre": "Rock"},
+    {"name": "SomaFM Metal", "url": "https://ice3.somafm.com/metal-128-mp3", "genre": "Metal"},
+    {"name": "laut.fm rock", "url": "https://stream.laut.fm/rock", "genre": "Rock"},
+]
+
+def load_stations():
+    with _stations_lock:
+        if os.path.isfile(STATIONS_FILE):
+            try:
+                with open(STATIONS_FILE) as f:
+                    return json.load(f)
+            except (json.JSONDecodeError, OSError):
+                pass
+        stations = [dict(s, id=str(i)) for i, s in enumerate(DEFAULT_STATIONS)]
+        save_stations(stations)
+        return stations
+
+def save_stations(stations):
+    with _stations_lock:
+        with open(STATIONS_FILE, 'w') as f:
+            json.dump(stations, f, indent=2)

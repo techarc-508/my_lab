@@ -1,0 +1,16 @@
+[Unit]
+Description=NEOTOKYO FM - Client (Vite React Dev Server)
+After=network.target neotokyo-grabber.service
+Wants=neotokyo-grabber.service
+
+[Service]
+Type=simple
+User=pushpal
+WorkingDirectory=/mnt/data/projects/mini_radio/client
+ExecStart=/mnt/data/projects/mini_radio/start-client.sh
+Environment="HOME=/home/pushpal"
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
