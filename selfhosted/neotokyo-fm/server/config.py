@@ -56,7 +56,7 @@ _MAX_UPLOAD_MB = int(os.environ.get('MAX_UPLOAD_MB', '32'))
 _MAX_CONTENT_LENGTH = _MAX_UPLOAD_MB * 1024 * 1024
 _MAX_DOWNLOAD_AGE_DAYS = int(os.environ.get('MAX_DOWNLOAD_AGE_DAYS', '7'))
 TELEMETRY_SAMPLE_RATE = int(os.environ.get('TELEMETRY_SAMPLE_RATE', '100'))
-APP_VERSION = os.environ.get('APP_VERSION', '5.1')
+APP_VERSION = os.environ.get('APP_VERSION', '5.0')
 WATCHER_ENABLED = os.environ.get('WATCHER_ENABLED', '0') == '1'
 MUSICBRAINZ_ENABLED = os.environ.get('MUSICBRAINZ_ENABLED', '1') == '1'
 UPDATE_REPO = os.environ.get('UPDATE_REPO', 'origin/main')
@@ -64,8 +64,8 @@ SESSION_BACKEND = os.environ.get('SESSION_BACKEND', 'sqlite')
 
 CORS_ORIGIN = os.environ.get('CORS_ORIGIN', 'http://localhost:3000').strip()
 _secret_key_file = os.path.join(BASE_DIR, '.flask_secret_key')
-if os.environ.get('FLASK_SECRET_KEY', '').strip():
-    FLASK_SECRET_KEY = os.environ['FLASK_SECRET_KEY'].strip()
+if 'FLASK_SECRET_KEY' in os.environ:
+    FLASK_SECRET_KEY = os.environ['FLASK_SECRET_KEY']
 elif os.path.isfile(_secret_key_file):
     with open(_secret_key_file) as f:
         FLASK_SECRET_KEY = f.read().strip()

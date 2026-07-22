@@ -28,7 +28,7 @@ export default function YouTubePage() {
   const [videoError, setVideoError] = useState(false)
   const [showVolume, setShowVolume] = useState(false)
   const videoRef = useRef<HTMLVideoElement>(null)
-  const volumeTimeout = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
+  const volumeTimeout = useRef<ReturnType<typeof setTimeout>>()
   const hasSearched = useRef(false)
 
   useEffect(() => {
@@ -203,17 +203,6 @@ export default function YouTubePage() {
       } catch { setTimeout(check, 2000) }
     }
     setTimeout(check, 2000)
-  }
-
-  const handleImportPlaylist = async () => {
-    if (!playlistUrl.trim()) return
-    setImporting(true)
-    try {
-      const data = await expandPlaylist(playlistUrl)
-      if (data.error) { showToast(data.error, 'error') }
-      else { showToast(`Imported ${data.count} videos`, 'success'); setShowImport(false); setPlaylistUrl('') }
-    } catch { showToast('Failed to import playlist', 'error') }
-    setImporting(false)
   }
 
   const fmtTime = (s: number) => {

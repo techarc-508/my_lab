@@ -1,6 +1,12 @@
 node_modules/
-dist/
+src/
+public/
+nginx.conf
+Dockerfile
 .git
 .gitignore
-.env
 README.md
+tsconfig.json
+tsconfig.*
+package-lock.json
+.env

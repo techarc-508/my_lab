@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { scanMetadata, searchAlbumArt, applyAlbumArt, updateFileTags, listFiles, getMetadata, findCover, getScannerStatus } from '../services/grabberAPI'
+import { scanMetadata, searchAlbumArt, applyAlbumArt, updateFileTags, listFiles, getMetadata, findCover } from '../services/grabberAPI'
 import { showToast } from '../components/ui/StreamToast'
 import { Search, Image, Check, X, Loader2, RefreshCw, Music, Globe } from 'lucide-react'
 import type { AlbumArtResult } from '../types/audio'
@@ -33,7 +33,8 @@ export default function AdminScanner() {
     if (!scanning) return
     const poll = setInterval(async () => {
       try {
-        const d = await getScannerStatus()
+        const r = await fetch('/api/scanner-status')
+        const d = await r.json()
         setScanProgress(d.progress || 0)
         setScanStatus(d.status || '')
         if (d.done) { setScanning(false); setScanProgress(0); setScanStatus(''); showToast(d.message || 'Scan complete', 'success'); await loadFiles() }

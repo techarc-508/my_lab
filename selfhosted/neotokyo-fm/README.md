@@ -70,18 +70,6 @@ Everything rebuilt from scratch with a real frontend framework, a cohesive retro
 - 📰 **Live City Pop news** — Dynamic trivia section pulling from Google News + Reddit RSS
 - 🎬 **YouTube video mode** — Fullscreen overlay + mini-player with keyboard shortcuts (Space, M, F, arrows)
 
-### v5.1 — "Production hardened" (deployment fixes + bulk import)
-
-Hardened for real production use on Proxmox LXC. Fixed auth bugs, added bulk YouTube import, and made deploys safe (secrets and data survive rebuilds).
-
-**v5.1 highlights:**
-- 🔐 **Scanner auth fix** — Admin scanner page now sends Bearer token (was 401 on every poll)
-- 🔑 **Password sync** — `ADMIN_PASSWORD` env var auto-syncs to SQLite DB on startup (fixes stale hash after deploy)
-- 🗄️ **Secret key fix** — Empty `FLASK_SECRET_KEY` env var no longer bypasses auto-generation
-- 📦 **Safe deploys** — `deploy-pve.sh` preserves `.env` and `server/downloads/` across rebuilds
-- 🎵 **Bulk YouTube import** — Script to download from a list of URLs with dedup (`scripts/bulk-import-yt.py`)
-- 🐛 **Deploy script rewrite** — Fixed sshpass quoting, added `pct_cmd`/`ssh_cmd` helpers, health check works
-
 ### The numbers
 
 | | v1 | v5 |

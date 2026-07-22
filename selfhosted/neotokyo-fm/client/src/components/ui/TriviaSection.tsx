@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
 import { BookOpen, ChevronLeft, ChevronRight, ExternalLink, RefreshCw, Sparkles } from 'lucide-react'
 
-const FALLBACK_TRIVIA: { title: string; content: string; source_detail: string; url?: string }[] = [
+const FALLBACK_TRIVIA = [
   {
     title: 'The Birth of City Pop',
     content: "City Pop emerged in late 1970s Japan during the economic asset boom. It blended Western soft rock, jazz fusion, boogie, and R&B with advanced Japanese synthesizer tech like the Yamaha DX7.",

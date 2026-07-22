@@ -87,7 +87,7 @@ def create_app():
 
     @app.route('/')
     def index():
-        return jsonify({'app': 'NEOTOKYO FM', 'version': '5.1', 'status': 'ok'})
+        return jsonify({'app': 'NEOTOKYO FM', 'version': '4.0', 'status': 'ok'})
 
     @app.route('/api/csrf-token')
     def get_csrf_token():
@@ -244,18 +244,6 @@ def main():
     os.makedirs(DEFAULT_PLAYLIST_DIR, exist_ok=True)
     os.makedirs(METADATA_DIR, exist_ok=True)
     init_db()
-
-    _env_pw = os.environ.get('ADMIN_PASSWORD', '').strip()
-    if _env_pw:
-        try:
-            from models.db import get_user_by_username, update_user_password
-            from werkzeug.security import check_password_hash, generate_password_hash
-            admin = get_user_by_username('admin')
-            if admin and not check_password_hash(admin['password_hash'], _env_pw):
-                update_user_password(admin['id'], generate_password_hash(_env_pw))
-                logger.info("Synced ADMIN_PASSWORD from env to DB")
-        except Exception as e:
-            logger.warning(f"Failed to sync admin password: {e}")
 
     try:
         from alembic.config import Config

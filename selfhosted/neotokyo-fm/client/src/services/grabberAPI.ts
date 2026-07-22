@@ -380,10 +380,6 @@ export function scanMetadata(): Promise<{ scanned: number; running?: boolean }> 
   return req('/api/scan-metadata', { method: 'POST', body: JSON.stringify({}) })
 }
 
-export function getScannerStatus(): Promise<any> {
-  return req('/api/scanner-status')
-}
-
 export function searchAlbumArt(title: string, artist?: string): Promise<{ results: AlbumArtResult[]; count: number }> {
   return req('/api/search-album-art', { method: 'POST', body: JSON.stringify({ title, artist }) })
 }
