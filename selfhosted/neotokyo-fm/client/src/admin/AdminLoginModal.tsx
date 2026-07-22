@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import { useNavigate, useLocation } from 'react-router-dom'
-import { login, ensureCsrfToken } from '../services/grabberAPI'
+import { login } from '../services/grabberAPI'
+import { usePlayerStore } from '../stores/playerStore'
 import { LogIn, Shield } from 'lucide-react'
 
 export default function AdminLoginModal() {
@@ -14,15 +15,18 @@ export default function AdminLoginModal() {
   const from = (location.state as any)?.from || '/admin'
 
   useEffect(() => {
-    ensureCsrfToken().then(() => setLoading(false))
+    setLoading(false)
   }, [])
+
+  const setUser = usePlayerStore(s => s.setUser)
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault()
     setLoading(true)
     setError('')
     try {
-      await login(username, password)
+      const res = await login(username, password)
+      if (res.username) setUser(res.username, res.role || 'user')
       navigate(from, { replace: true })
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Login failed')
@@ -31,7 +35,7 @@ export default function AdminLoginModal() {
   }
 
   return (
-    <div className="h-full flex items-center justify-center" style={{ background: '#0A0A2E' }}>
+    <div className="min-h-screen flex items-center justify-center bg-surface-deep">
       <form onSubmit={handleLogin} className="w-80 bg-surface-raised border border-border-default/50 rounded-lg p-6 space-y-4 shadow-glow-combo">
         <div className="flex flex-col items-center gap-3 mb-2">
           <div className="w-12 h-12 rounded-lg bg-gradient-to-br from-hot-pink to-purple flex items-center justify-center shadow-glow-pink-md">

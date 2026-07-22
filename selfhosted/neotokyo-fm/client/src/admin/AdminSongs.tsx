@@ -1,7 +1,8 @@
 import { useState, useEffect, useCallback, useMemo } from 'react'
 import { listFiles, getMetadata, updateFileMetadata, batchUpdateMetadata, uploadCover, deleteCover, deleteFiles } from '../services/grabberAPI'
 import { showToast } from '../components/ui/StreamToast'
-import { Music, Search, Trash2, Edit3, Image, Upload, X, Check } from 'lucide-react'
+import { Music, Search, Trash2, Edit3, Image, Upload, X, Check, Radio } from 'lucide-react'
+import ConfirmDialog from '../components/ui/ConfirmDialog'
 import type { FileMeta } from '../types/audio'
 
 interface FileEntry extends FileMeta {
@@ -18,6 +19,11 @@ export default function AdminSongs() {
   const [batchEditOpen, setBatchEditOpen] = useState(false)
   const [batchForm, setBatchForm] = useState({ title: '', artist: '', album: '', genre: '' })
   const [confirmDelete, setConfirmDelete] = useState<string | null>(null)
+  const [confirmBatchDelete, setConfirmBatchDelete] = useState(false)
+  const [convertTargets, setConvertTargets] = useState<Set<string>>(new Set())
+  const [converting, setConverting] = useState(false)
+  // Inline edit state
+  const [inlineEdit, setInlineEdit] = useState<{ name: string; field: string; value: string } | null>(null)
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -25,10 +31,8 @@ export default function AdminSongs() {
       const data = await listFiles(0, 0)
       const withMeta = await Promise.all(
         data.files.map(async (f: any) => {
-          try {
-            const meta = await getMetadata(f.name)
-            return { ...f, ...meta }
-          } catch { return { ...f, title: f.name, artist: null, album: null, album_art: null, has_cover: false, has_lyrics: false } }
+          try { const meta = await getMetadata(f.name); return { ...f, ...meta } }
+          catch { return { ...f, title: f.name, artist: null, album: null, album_art: null, has_cover: false, has_lyrics: false } }
         })
       )
       setFiles(withMeta)
@@ -45,12 +49,7 @@ export default function AdminSongs() {
   }, [files, search])
 
   const toggleSelect = (name: string) => {
-    setSelected(prev => {
-      const next = new Set(prev)
-      if (next.has(name)) next.delete(name)
-      else next.add(name)
-      return next
-    })
+    setSelected(prev => { const next = new Set(prev); if (next.has(name)) next.delete(name); else next.add(name); return next })
   }
 
   const selectAll = () => {
@@ -59,18 +58,20 @@ export default function AdminSongs() {
   }
 
   const openEdit = (f: FileEntry) => {
-    setEditFile(f)
-    setEditForm({ title: f.title || '', artist: f.artist || '', album: f.album || '', genre: f.genre || '' })
+    setEditFile(f); setEditForm({ title: f.title || '', artist: f.artist || '', album: f.album || '', genre: f.genre || '' })
   }
 
   const saveEdit = async () => {
     if (!editFile) return
-    try {
-      await updateFileMetadata(editFile.name, editForm)
-      showToast('Updated', 'success')
-      setEditFile(null)
-      load()
-    } catch { showToast('Update failed', 'error') }
+    try { await updateFileMetadata(editFile.name, editForm); showToast('Updated', 'success'); setEditFile(null); load() }
+    catch { showToast('Update failed', 'error') }
+  }
+
+  // Inline edit save
+  const saveInlineEdit = async (name: string, field: string, value: string) => {
+    try { await updateFileMetadata(name, { [field]: value }); showToast('Updated', 'success') }
+    catch { showToast('Update failed', 'error') }
+    setInlineEdit(null)
   }
 
   const saveBatchEdit = async () => {
@@ -79,10 +80,7 @@ export default function AdminSongs() {
     try {
       await batchUpdateMetadata(upd)
       showToast(`Updated ${upd.length} songs`, 'success')
-      setBatchEditOpen(false)
-      setSelected(new Set())
-      setBatchForm({ title: '', artist: '', album: '', genre: '' })
-      load()
+      setBatchEditOpen(false); setSelected(new Set()); setBatchForm({ title: '', artist: '', album: '', genre: '' }); load()
     } catch { showToast('Batch update failed', 'error') }
   }
 
@@ -92,8 +90,8 @@ export default function AdminSongs() {
   }
 
   const handleBatchDelete = async () => {
-    try { await deleteFiles(Array.from(selected)); showToast(`Deleted ${selected.size} songs`, 'success'); setSelected(new Set()); load() }
-    catch { showToast('Batch delete failed', 'error') }
+    try { await deleteFiles(Array.from(selected)); showToast(`Deleted ${selected.size} songs`, 'success'); setSelected(new Set()); setConfirmBatchDelete(false); load() }
+    catch { showToast('Batch delete failed', 'error'); setConfirmBatchDelete(false) }
   }
 
   const handleCoverUpload = async (name: string, e: React.ChangeEvent<HTMLInputElement>) => {
@@ -106,13 +104,28 @@ export default function AdminSongs() {
 
   const handleCoverDelete = async (name: string) => {
     try { await deleteCover(name); showToast('Cover removed', 'success'); load() }
-    catch { showToast('Delete failed', 'error') }
+    catch { showToast('Cover delete failed', 'error') }
+  }
+
+  const handleConvert = async (name: string) => {
+    try {
+      const res = await fetch('/api/transcode', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ filename: name, bitrate: 320 }),
+      })
+      const data = await res.json()
+      if (res.ok) showToast(`Converted: ${data.output}`, 'success')
+      else showToast(data.error || 'Convert failed', 'error')
+    } catch { showToast('Convert failed', 'error') }
   }
 
   return (
-    <div className="p-6" style={{ background: '#0A0A2E' }}>
+    <div className="p-6 bg-surface-deep">
       <div className="flex items-center justify-between mb-4">
-        <h2 className="text-xl font-display tracking-[3px] text-transparent bg-clip-text bg-gradient-to-r from-hot-pink to-purple flex items-center gap-2"><Music size={18} /> MANAGE SONGS <span className="text-content-tertiary text-sm">({files.length})</span></h2>
+        <h2 className="text-xl font-display tracking-[3px] text-transparent bg-clip-text bg-gradient-to-r from-hot-pink to-purple flex items-center gap-2">
+          <Music size={18} /> MANAGE SONGS <span className="text-content-tertiary text-sm">({files.length})</span>
+        </h2>
         <div className="flex items-center gap-2">
           <div className="relative">
             <Search size={12} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-content-tertiary" />
@@ -129,7 +142,7 @@ export default function AdminSongs() {
           <button onClick={() => setBatchEditOpen(true)} className="px-2.5 py-1 text-[10px] font-body bg-electric-blue/20 border border-electric-blue/30 rounded-md text-electric-blue hover:bg-electric-blue/30 transition-all flex items-center gap-1">
             <Edit3 size={10} /> Edit
           </button>
-          <button onClick={handleBatchDelete} className="px-2.5 py-1 text-[10px] font-body bg-error/20 border border-error/30 rounded-md text-error hover:bg-error/30 transition-all flex items-center gap-1">
+          <button onClick={() => setConfirmBatchDelete(true)} className="px-2.5 py-1 text-[10px] font-body bg-error/20 border border-error/30 rounded-md text-error hover:bg-error/30 transition-all flex items-center gap-1">
             <Trash2 size={10} /> Delete
           </button>
           <button onClick={() => setSelected(new Set())} className="px-2 py-1 text-[10px] font-body text-content-tertiary hover:text-white transition-all">Clear</button>
@@ -145,10 +158,7 @@ export default function AdminSongs() {
           <table className="w-full text-xs">
             <thead>
               <tr className="border-b border-border-default/30 bg-surface-sunken/50">
-                <th className="w-10 p-3 text-left">
-                  <input type="checkbox" checked={selected.size === filtered.length && filtered.length > 0} onChange={selectAll}
-                    className="accent-hot-pink rounded" />
-                </th>
+                <th className="w-10 p-3 text-left"><input type="checkbox" checked={selected.size === filtered.length && filtered.length > 0} onChange={selectAll} className="accent-hot-pink rounded" /></th>
                 <th className="p-3 text-left text-content-tertiary font-body text-[10px] uppercase tracking-[1px]">Cover</th>
                 <th className="p-3 text-left text-content-tertiary font-body text-[10px] uppercase tracking-[1px]">Title</th>
                 <th className="p-3 text-left text-content-tertiary font-body text-[10px] uppercase tracking-[1px]">Artist</th>
@@ -160,37 +170,42 @@ export default function AdminSongs() {
             <tbody>
               {filtered.map(f => (
                 <tr key={f.name} className="border-b border-border-default/20 hover:bg-white/[0.02] transition-colors">
-                  <td className="p-3">
-                    <input type="checkbox" checked={selected.has(f.name)} onChange={() => toggleSelect(f.name)} className="accent-hot-pink rounded" />
-                  </td>
+                  <td className="p-3"><input type="checkbox" checked={selected.has(f.name)} onChange={() => toggleSelect(f.name)} className="accent-hot-pink rounded" /></td>
                   <td className="p-3">
                     <div className="relative group">
                       <div className="w-9 h-9 rounded-md bg-gradient-to-br from-hot-pink/10 to-purple/10 flex items-center justify-center overflow-hidden border border-border-default/50">
-                        {f.has_cover ? (
-                          <img src={`/api/cover/${encodeURIComponent(f.name)}`} className="w-full h-full object-cover" />
-                        ) : (
-                          <Music size={13} className="text-hot-pink/40" />
-                        )}
+                        {f.has_cover ? <img src={`/api/cover/${encodeURIComponent(f.name)}`} className="w-full h-full object-cover" /> : <Music size={13} className="text-hot-pink/40" />}
                       </div>
                       <div className="absolute -bottom-1 -right-1 hidden group-hover:flex gap-0.5">
                         <label className="w-4 h-4 bg-surface-raised rounded flex items-center justify-center cursor-pointer border border-border-default hover:border-hot-pink/50">
                           <Upload size={7} className="text-hot-pink" />
                           <input type="file" accept=".jpg,.jpeg,.png,.webp" className="hidden" onChange={e => handleCoverUpload(f.name, e)} />
                         </label>
-                        {f.has_cover && (
-                          <button onClick={() => handleCoverDelete(f.name)} className="w-4 h-4 bg-surface-raised rounded flex items-center justify-center border border-border-default hover:border-error/50">
-                            <X size={7} className="text-error" />
-                          </button>
-                        )}
+                        {f.has_cover && <button onClick={() => handleCoverDelete(f.name)} className="w-4 h-4 bg-surface-raised rounded flex items-center justify-center border border-border-default hover:border-error/50"><X size={7} className="text-error" /></button>}
                       </div>
                     </div>
                   </td>
-                  <td className="p-3 truncate max-w-[200px] text-content-primary font-body text-[11px]">{f.title || f.name}</td>
-                  <td className="p-3 truncate max-w-[150px] text-content-secondary font-body text-[11px]">{f.artist || '-'}</td>
-                  <td className="p-3 truncate max-w-[150px] text-content-secondary font-body text-[11px]">{f.album || '-'}</td>
-                  <td className="p-3 truncate max-w-[120px] text-content-secondary font-body text-[11px]">{f.genre || '-'}</td>
+                  {/* Inline editable cells */}
+                  {(['title', 'artist', 'album', 'genre'] as const).map(field => (
+                    <td key={field} className="p-3 truncate max-w-[200px] font-body text-[11px]"
+                      onClick={() => setInlineEdit({ name: f.name, field, value: f[field] || '' })}>
+                      {inlineEdit?.name === f.name && inlineEdit?.field === field ? (
+                        <div className="flex items-center gap-1">
+                          <input autoFocus value={inlineEdit.value} onChange={e => setInlineEdit({ ...inlineEdit, value: e.target.value })}
+                            className="w-full px-1.5 py-0.5 bg-surface-sunken border border-hot-pink rounded text-[11px] text-content-primary focus:outline-none"
+                            onKeyDown={e => { if (e.key === 'Enter') saveInlineEdit(f.name, field, inlineEdit.value); if (e.key === 'Escape') setInlineEdit(null) }}
+                            onBlur={() => saveInlineEdit(f.name, field, inlineEdit.value)} />
+                        </div>
+                      ) : (
+                        <span className="cursor-pointer hover:text-hot-pink transition-colors">{field === 'title' ? (f.title || f.name) : ((f as any)[field] || '-')}</span>
+                      )}
+                    </td>
+                  ))}
                   <td className="p-3 text-right">
                     <div className="flex items-center justify-end gap-1">
+                      <button onClick={() => handleConvert(f.name)} className="p-1.5 rounded hover:bg-success/10 hover:text-success transition-all" title="Convert to MP3 320kbps">
+                        <Radio size={12} />
+                      </button>
                       <button onClick={() => openEdit(f)} className="p-1.5 rounded hover:bg-hot-pink/10 hover:text-hot-pink transition-all" title="Edit metadata">
                         <Edit3 size={12} />
                       </button>
@@ -206,6 +221,7 @@ export default function AdminSongs() {
         </div>
       )}
 
+      {/* Edit modal */}
       {editFile && (
         <div className="fixed inset-0 z-50 bg-black/70 flex items-center justify-center" onClick={() => setEditFile(null)}>
           <div className="bg-surface-raised border border-border-default/50 rounded-lg p-6 w-96 space-y-4 shadow-glow-combo" onClick={e => e.stopPropagation()}>
@@ -241,6 +257,7 @@ export default function AdminSongs() {
         </div>
       )}
 
+      {/* Batch edit modal */}
       {batchEditOpen && (
         <div className="fixed inset-0 z-50 bg-black/70 flex items-center justify-center" onClick={() => setBatchEditOpen(false)}>
           <div className="bg-surface-raised border border-border-default/50 rounded-lg p-6 w-96 space-y-4 shadow-glow-combo" onClick={e => e.stopPropagation()}>
@@ -265,20 +282,27 @@ export default function AdminSongs() {
         </div>
       )}
 
-      {confirmDelete && (
-        <div className="fixed inset-0 z-50 bg-black/70 flex items-center justify-center" onClick={() => setConfirmDelete(null)}>
-          <div className="bg-surface-raised border border-border-default/50 rounded-lg p-6 w-80 space-y-4 shadow-glow-error" onClick={e => e.stopPropagation()}>
-            <h3 className="text-sm font-display tracking-[2px] text-error flex items-center gap-2"><Trash2 size={14} /> DELETE SONG</h3>
-            <p className="text-[11px] font-body text-content-secondary">Are you sure you want to delete <span className="text-white">{confirmDelete}</span>? This cannot be undone.</p>
-            <div className="flex items-center gap-2 pt-2">
-              <button onClick={() => handleDelete(confirmDelete)} className="flex-1 py-2 rounded-md bg-error text-white text-[11px] font-body tracking-[1px] uppercase hover:brightness-110 active:brightness-90 transition-all flex items-center justify-center gap-1.5 shadow-glow-error">
-                <Trash2 size={12} /> Delete
-              </button>
-              <button onClick={() => setConfirmDelete(null)} className="px-4 py-2 text-[11px] font-body text-content-tertiary hover:text-white transition-all">Cancel</button>
-            </div>
-          </div>
-        </div>
-      )}
+      {/* Confirm delete dialog */}
+      <ConfirmDialog
+        open={!!confirmDelete}
+        title="DELETE SONG"
+        message={`Are you sure you want to delete "${confirmDelete}"? This cannot be undone.`}
+        confirmLabel="Delete"
+        variant="danger"
+        onConfirm={() => confirmDelete && handleDelete(confirmDelete)}
+        onCancel={() => setConfirmDelete(null)}
+      />
+
+      {/* Confirm batch delete dialog */}
+      <ConfirmDialog
+        open={confirmBatchDelete}
+        title="DELETE SONGS"
+        message={`Are you sure you want to delete ${selected.size} songs? This cannot be undone.`}
+        confirmLabel={`Delete ${selected.size}`}
+        variant="danger"
+        onConfirm={handleBatchDelete}
+        onCancel={() => setConfirmBatchDelete(false)}
+      />
     </div>
   )
 }

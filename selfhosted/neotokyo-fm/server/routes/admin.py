@@ -3,9 +3,27 @@ import requests as http_requests
 from flask import request, jsonify, Response, stream_with_context
 from . import admin_bp
 from config import DOWNLOADS_DIR, DEFAULT_DOWNLOAD_DIR, DEFAULT_PLAYLIST_DIR, METADATA_DIR, LOG_BUFFER, _start_time
-from utils.security import auth_required
+from utils.security import auth_required, rate_limit
 from utils.file_utils import ensure_meta_dir, sidecar_lyrics
 from models.cache import LRUCache
+from utils.circuit_breaker import get_breaker
+from models.db import (add_podcast, get_podcast, delete_podcast, list_podcasts,
+                        get_podcast_feed_urls, update_podcast, get_db)
+
+_webhook_breaker = get_breaker('webhook', threshold=5, cooldown=60)
+
+_socketio = None
+
+def register_socketio_events(sio):
+    global _socketio
+    _socketio = sio
+
+def emit_socketio(event: str, data: dict):
+    if _socketio:
+        try:
+            _socketio.emit(event, data)
+        except Exception:
+            pass
 
 logger = logging.getLogger('batch_dl')
 
@@ -52,15 +70,10 @@ def api_health():
                 ffmpeg_ver = r.stdout.split('\n')[0].strip()
         except Exception:
             ffmpeg_ver = None
-        lrclib_ok = True
-        try:
-            from services.lrclib import _lrclib_disabled
-            lrclib_ok = not _lrclib_disabled
-        except Exception:
-            lrclib_ok = False
+        cb_lrclib = get_breaker('lrclib', threshold=10, cooldown=300)
         _health_cache = {
             'status': 'ok',
-            'ffmpeg': ffmpeg_ver, 'lrclib': lrclib_ok,
+            'ffmpeg': ffmpeg_ver, 'lrclib': not cb_lrclib.is_open(),
             'python': sys.version,
             'download_dir': DEFAULT_DOWNLOAD_DIR,
         }
@@ -212,10 +225,12 @@ def webhook_test():
     url = data.get('url', '').strip()
     if not url:
         return jsonify({'error': 'No URL'}), 400
-    try:
+    def _do_webhook_test():
         r = http_requests.post(url, json={'test': True, 'timestamp': datetime.datetime.utcnow().isoformat() + 'Z'},
                           timeout=10, headers={'User-Agent': 'NEOTOKYO-FM/1.0'})
-        return jsonify({'ok': r.ok, 'status': r.status_code})
+        return {'ok': r.ok, 'status': r.status_code}
+    try:
+        return jsonify(_webhook_breaker.call(_do_webhook_test))
     except http_requests.exceptions.Timeout:
         return jsonify({'ok': False, 'status': 0}), 200
     except Exception as e:
@@ -239,14 +254,17 @@ def batch_history():
     return jsonify([])
 
 @admin_bp.route('/play/log', methods=['POST'])
+@auth_required
 def log_play_event():
+    from flask import session
     data = request.get_json() or {}
     title = data.get('title', 'Unknown')
     artist = data.get('artist', '')
     album = data.get('album', '')
     ip = request.remote_addr or ''
+    user_id = session.get('user_id', 1)
     from models.db import log_play
-    log_play(title, artist, album, ip)
+    log_play(title, artist, album, ip, user_id)
     return jsonify({'ok': True})
 
 @admin_bp.route('/stats/plays')
@@ -402,6 +420,12 @@ def lyrics_status():
         return jsonify({'error': str(e)}), 500
     return jsonify({'files': files})
 
+@admin_bp.route('/scanner-status')
+@auth_required
+def scanner_status():
+    from workers.metadata import get_scan_status
+    return jsonify(get_scan_status())
+
 @admin_bp.route('/stats/clear-plays', methods=['POST'])
 @auth_required
 def clear_plays():
@@ -412,15 +436,46 @@ def clear_plays():
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
+@admin_bp.route('/analytics/overview')
+@auth_required
+def analytics_overview():
+    from models.db import get_db
+    conn = get_db()
+    try:
+        top_tracks = conn.execute(
+            'SELECT title, artist, COUNT(*) as play_count FROM play_log GROUP BY title ORDER BY play_count DESC LIMIT 10'
+        ).fetchall()
+        top_artists = conn.execute(
+            'SELECT artist, COUNT(*) as play_count FROM play_log WHERE artist != "" GROUP BY artist ORDER BY play_count DESC LIMIT 10'
+        ).fetchall()
+        recent_count = conn.execute(
+            "SELECT COUNT(*) as c FROM play_log WHERE played_at > datetime('now', '-24 hours')"
+        ).fetchone()
+        total_plays = conn.execute('SELECT COUNT(*) as c FROM play_log').fetchone()
+        return jsonify({
+            'top_tracks': [dict(r) for r in top_tracks],
+            'top_artists': [dict(r) for r in top_artists],
+            'plays_24h': dict(recent_count)['c'] if recent_count else 0,
+            'total_plays': dict(total_plays)['c'] if total_plays else 0,
+        })
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+    finally:
+        conn.close()
+
+@admin_bp.route('/admin/ingestion-log')
+@auth_required
+def admin_ingestion_log():
+    limit = request.args.get('limit', default=20, type=int)
+    from models.db import get_recent_ingestions
+    return jsonify(get_recent_ingestions(limit))
+
 @admin_bp.route('/admin/reset-lrclib', methods=['POST'])
 @auth_required
 def reset_lrclib():
     try:
-        from services.lrclib import _lrclib_disabled, _lrclib_failures, _lrclib_disabled_at, _lrclib_lock
-        with _lrclib_lock:
-            _lrclib_disabled = False
-            _lrclib_failures = 0
-            _lrclib_disabled_at = 0.0
+        cb_lrclib = get_breaker('lrclib', threshold=10, cooldown=300)
+        cb_lrclib.reset()
         logger.info("LRCLIB circuit breaker manually reset")
         return jsonify({'ok': True})
     except Exception as e:
@@ -445,3 +500,162 @@ def restore_backup(backup_id):
         return jsonify({'ok': True, 'restored': restored, 'version': row['version']})
     except Exception as e:
         return jsonify({'error': str(e)}), 500
+
+@admin_bp.route('/analyze-gains', methods=['POST'])
+@auth_required
+@rate_limit(5, 60)
+def trigger_gain_analysis():
+    from workers.metadata import start_gain_analysis
+    started = start_gain_analysis()
+    if not started:
+        return jsonify({'analyzing': False, 'error': 'Already analyzing'}), 409
+    return jsonify({'analyzing': True})
+
+@admin_bp.route('/gains/status')
+@auth_required
+def gain_analysis_status():
+    from workers.metadata import get_gain_status
+    return jsonify(get_gain_status())
+
+@admin_bp.route('/gains/<path:filename>')
+def get_file_gain(filename: str):
+    from workers.metadata import get_gain_for_file
+    from urllib.parse import unquote
+    filename = unquote(filename)
+    data = get_gain_for_file(filename)
+    if not data:
+        return jsonify({'error': 'No gain data'}), 404
+    return jsonify(data)
+
+@admin_bp.route('/analyze-gain/<path:filename>', methods=['POST'])
+@auth_required
+def analyze_single_gain(filename: str):
+    from workers.metadata import analyze_track_gain
+    from urllib.parse import unquote
+    filename = unquote(filename)
+    result = analyze_track_gain(filename)
+    if not result:
+        return jsonify({'error': 'Analysis failed'}), 500
+    return jsonify(result)
+
+@admin_bp.route('/gains')
+@auth_required
+def list_all_gains():
+    from models.db import get_all_gain_tracks
+    return jsonify(get_all_gain_tracks())
+
+@admin_bp.route('/telemetry', methods=['POST'])
+def receive_telemetry():
+    try:
+        events = request.get_json(force=True)
+        if not isinstance(events, list):
+            events = [events]
+        from models.db import insert_qoe_events
+        from config import TELEMETRY_SAMPLE_RATE
+        if TELEMETRY_SAMPLE_RATE < 100:
+            import random
+            events = [e for e in events if random.randint(1, 100) <= TELEMETRY_SAMPLE_RATE]
+        if events:
+            insert_qoe_events(events, request.remote_addr or '')
+        return jsonify({'ok': True, 'count': len(events)})
+    except Exception as e:
+        return jsonify({'error': str(e)}), 400
+
+# --- Admin podcast endpoints ---
+
+@admin_bp.route('/admin/podcasts', methods=['GET'])
+@auth_required
+def admin_list_podcasts():
+    podcasts = list_podcasts()
+    return jsonify(podcasts)
+
+@admin_bp.route('/admin/podcasts/<int:podcast_id>', methods=['DELETE'])
+@auth_required
+@rate_limit(20, 60)
+def admin_delete_podcast(podcast_id):
+    podcast = get_podcast(podcast_id)
+    if not podcast:
+        return jsonify({'error': 'Not found'}), 404
+    delete_podcast(podcast_id)
+    return jsonify({'ok': True})
+
+@admin_bp.route('/admin/podcasts/sync-all', methods=['POST'])
+@auth_required
+@rate_limit(5, 60)
+def admin_sync_all_podcasts():
+    feeds = get_podcast_feed_urls()
+    count = 0
+    for pid, _ in feeds:
+        try:
+            from routes.podcasts import sync_feed
+            import threading
+            threading.Thread(target=lambda: sync_feed(pid), daemon=True).start()
+            count += 1
+        except Exception:
+            pass
+    try:
+        from workers.podcast_scheduler import auto_download_new_episodes
+        threading.Thread(target=auto_download_new_episodes, daemon=True).start()
+    except Exception:
+        pass
+    return jsonify({'syncing': count})
+
+@admin_bp.route('/admin/podcasts/stats', methods=['GET'])
+@auth_required
+def admin_podcast_stats():
+    conn = get_db()
+    total_podcasts = conn.execute('SELECT COUNT(*) FROM podcasts').fetchone()[0]
+    total_episodes = conn.execute('SELECT COUNT(*) FROM podcast_episodes').fetchone()[0]
+    total_downloads = conn.execute('SELECT COUNT(*) FROM podcast_episodes WHERE downloaded = 1').fetchone()[0]
+    conn.close()
+    return jsonify({
+        'total_podcasts': total_podcasts,
+        'total_episodes': total_episodes,
+        'total_downloads': total_downloads,
+    })
+
+@admin_bp.route('/admin/podcasts/seed', methods=['POST'])
+@auth_required
+@rate_limit(2, 60)
+def admin_seed_podcasts():
+    curated = [
+        {'feed_url': 'https://feed.songexploder.net/SongExploder', 'title': 'Song Exploder', 'category': 'Music'},
+        {'feed_url': 'https://feeds.npr.org/510319/podcast.xml', 'title': 'All Songs Considered', 'category': 'Music'},
+        {'feed_url': 'https://feed.kexp.org/kexp/songoftheday', 'title': 'KEXP Song of the Day', 'category': 'Music'},
+        {'feed_url': 'https://hnpod.libsyn.com/rss', 'title': 'The Hacker News', 'category': 'Technology'},
+        {'feed_url': 'https://feeds.simplecast.com/4MtfQvqk', 'title': 'CodeNewbie', 'category': 'Technology'},
+        {'feed_url': 'https://feed.syntax.fm/rss', 'title': 'Syntax.fm', 'category': 'Technology'},
+        {'feed_url': 'https://softwareengineeringdaily.com/feed/podcast/', 'title': 'Software Engineering Daily', 'category': 'Technology'},
+        {'feed_url': 'https://www.nasa.gov/rss/dynage/Podcast.xml', 'title': "NASA's Curious Universe", 'category': 'Science'},
+        {'feed_url': 'https://www.sciencefriday.com/feed/', 'title': 'Science Friday', 'category': 'Science'},
+        {'feed_url': 'https://feeds.simplecast.com/EmW8hzxo', 'title': 'Radiolab', 'category': 'Science'},
+        {'feed_url': 'https://feeds.simplecast.com/BqbsxVfO', 'title': '99% Invisible', 'category': 'Arts & Culture'},
+        {'feed_url': 'https://feeds.simplecast.com/YK2YKK6k', 'title': 'The Creative Brain', 'category': 'Arts & Culture'},
+        {'feed_url': 'https://feeds.npr.org/510313/podcast.xml', 'title': 'How I Built This', 'category': 'Business'},
+        {'feed_url': 'https://feeds.simplecast.com/izQk89nw', 'title': 'TED Talks Daily', 'category': 'Business'},
+        {'feed_url': 'https://feeds.simplecast.com/UIpFBw4o', 'title': "Conan O'Brien Needs A Friend", 'category': 'Comedy'},
+        {'feed_url': 'https://feeds.simplecast.com/0dfmArJv', 'title': 'Stuff You Should Know', 'category': 'Education'},
+        {'feed_url': 'https://feeds.simplecast.com/FfJUPm5J', 'title': 'Ologies with Alie Ward', 'category': 'Education'},
+        {'feed_url': 'https://feeds.simplecast.com/9D8S_5NS', 'title': 'Criminal', 'category': 'True Crime'},
+        {'feed_url': 'https://feeds.simplecast.com/I2qJpX8D', 'title': 'Serial', 'category': 'True Crime'},
+        {'feed_url': 'https://libsyn.libsyn.com/rss', 'title': 'The Feed: The Official Libsyn Podcast', 'category': 'Podcasting'},
+    ]
+    added = 0
+    skipped = 0
+    existing = {p['feed_url'] for p in list_podcasts()}
+    for p in curated:
+        if p['feed_url'] in existing:
+            skipped += 1
+            continue
+        pid = add_podcast(p['feed_url'], title=p['title'], category=p['category'])
+        if pid is not None:
+            try:
+                from routes.podcasts import sync_feed
+                import threading
+                threading.Thread(target=lambda: sync_feed(pid), daemon=True).start()
+            except Exception:
+                pass
+            added += 1
+        else:
+            skipped += 1
+    return jsonify({'added': added, 'skipped': skipped})

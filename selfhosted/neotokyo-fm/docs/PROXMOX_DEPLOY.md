@@ -45,13 +45,13 @@ pct enter 200
 apt update && apt install -y curl
 
 # Clone and run the installer (from git)
-bash -c "$(curl -fsSL https://raw.githubusercontent.com/anomalyco/mini_radio/main/scripts/install-proxmox.sh)" -- --git https://github.com/anomalyco/mini_radio.git
+bash -c "$(curl -fsSL https://raw.githubusercontent.com/techarc-508/my_lab/main/selfhosted/neotokyo-fm/scripts/install-proxmox.sh)" -- --git https://github.com/techarc-508/my_lab.git
 
 # Or if you have the project directory accessible:
 bash /path/to/mini_radio/scripts/install-proxmox.sh --source /path/to/mini_radio --docker
 
 # Or with Docker mode (recommended for isolation):
-bash install-proxmox.sh --git https://github.com/anomalyco/mini_radio.git --docker
+bash install-proxmox.sh --git https://github.com/techarc-508/my_lab.git --docker
 ```
 
 ## Import Existing Library from Development VM

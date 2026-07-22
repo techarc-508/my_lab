@@ -96,14 +96,14 @@ export default function PlaylistsPage() {
       <div className="flex gap-2 mb-4">
         <input value={newName} onChange={e => setNewName(e.target.value)} onKeyDown={e => e.key === 'Enter' && handleCreate()}
           placeholder="New playlist name..."
-          className="flex-1 px-3 py-2 bg-[#1d1e31] border border-[#2a2a4a] rounded text-xs focus:outline-none focus:border-pink-500/50" />
+          className="flex-1 px-3 py-2 bg-surface-card border border-border-subtle rounded text-xs focus:outline-none focus:border-pink-500/50" />
         <button onClick={handleCreate} className="px-3 py-2 bg-pink-500/20 border border-pink-400/30 rounded text-xs text-pink-300">
           <Plus size={14} />
         </button>
       </div>
       <div className="space-y-3">
         {playlists.map((pl, plIdx) => (
-          <div key={pl.name} className="bg-[#1d1e31]/50 border border-[#2a2a4a]/50 rounded-lg p-3">
+          <div key={pl.name} className="bg-surface-card/50 border border-border-subtle/50 rounded-lg p-3 card-hover">
             <div className="flex items-center gap-3 mb-2">
               {/* Cover art */}
               <div className="w-10 h-10 rounded-lg overflow-hidden shrink-0 bg-gradient-to-br from-pink-500/10 to-cyan-500/10 flex items-center justify-center">
@@ -128,14 +128,14 @@ export default function PlaylistsPage() {
                       dragIdx === i ? 'border border-pink-500/30 bg-pink-500/5' : ''
                     }`}
                   >
-                    <span className="cursor-grab active:cursor-grabbing text-[#5c3f45]"><GripVertical size={10} /></span>
+                    <span className="cursor-grab active:cursor-grabbing text-text-muted"><GripVertical size={10} /></span>
                     <button onClick={() => playTrack(t, pl.tracks)} className="flex-1 text-left truncate hover:text-pink-300">{t.title || t.filename}</button>
                     <button onClick={() => addToPlayerQueue(t)} className="text-cyan-400/0 group-hover:text-cyan-400/60 hover:text-cyan-400" title="Add to queue">+Q</button>
                     <button onClick={() => handleRemoveTrack(pl.name, t.url, pl.tracks)} className="text-red-400/0 group-hover:text-red-400/60 hover:text-red-400"><Trash2 size={10} /></button>
                   </div>
                 ))}
               </div>
-            ) : <p className="text-[10px] text-[#5c3f45]">Empty playlist</p>}
+            ) : <p className="text-[10px] text-text-muted">Empty playlist</p>}
           </div>
         ))}
       </div>

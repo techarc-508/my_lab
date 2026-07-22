@@ -1,5 +1,5 @@
 import { useState, useRef, useCallback, useEffect } from 'react'
-import { expandPlaylist, previewDownloads, startDownload, uploadLocalFile, listDownloads, retryFailedDownloads, deleteDownload, ensureCsrfToken } from '../services/grabberAPI'
+import { expandPlaylist, previewDownloads, startDownload, uploadLocalFile, listDownloads, retryFailedDownloads, deleteDownload } from '../services/grabberAPI'
 import { showToast } from '../components/ui/StreamToast'
 import { Upload, Link, ListMusic, Play, FileAudio, X, Loader2, RefreshCw, Trash2, CheckCircle, XCircle, Clock, ArrowUpDown, DownloadCloud, ChevronDown, ChevronRight, Plus, ExternalLink, Music, Gauge } from 'lucide-react'
 import type { Download } from '../types/audio'
@@ -67,7 +67,7 @@ export default function AdminImport() {
   const pollRef = useRef<ReturnType<typeof setInterval> | undefined>(undefined)
   const prevIds = useRef<Set<string>>(new Set())
 
-  useEffect(() => { ensureCsrfToken() }, [])
+  useEffect(() => {}, [])
 
   useEffect(() => {
     const load = async () => {
@@ -233,7 +233,7 @@ export default function AdminImport() {
   })
 
   return (
-    <div className="p-6 pb-32" style={{ background: '#0A0A2E' }}>
+    <div className="p-6 pb-32 bg-surface-deep">
       <div className="flex items-center justify-between mb-5">
         <h2 className="text-xl font-display tracking-[3px] text-transparent bg-clip-text bg-gradient-to-r from-hot-pink to-purple flex items-center gap-2"><DownloadCloud size={18} /> IMPORT</h2>
         <div className="flex items-center gap-2 text-[10px] font-body">

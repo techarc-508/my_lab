@@ -12,22 +12,37 @@ logger = logging.getLogger('batch_dl')
 
 from flask import Flask, request, jsonify, session, Response
 
-from config import FLASK_SECRET_KEY, DEFAULT_DOWNLOAD_DIR, DEFAULT_PLAYLIST_DIR, METADATA_DIR, CORS_ORIGIN, PORT, HOST
+from config import FLASK_SECRET_KEY, DEFAULT_DOWNLOAD_DIR, DEFAULT_PLAYLIST_DIR, METADATA_DIR, CORS_ORIGIN, PORT, HOST, _MAX_CONTENT_LENGTH
 from utils.security import require_auth
 from services.icy import icy_poll_worker
-from services.lrclib import _lrclib_disabled
+from utils.circuit_breaker import get_breaker, list_breakers
 from models.db import init_db
 
-from routes import auth_bp, files_bp, youtube_bp, radio_bp, downloads_bp, playlists_bp, admin_bp
+from routes import auth_bp, files_bp, youtube_bp, radio_bp, downloads_bp, playlists_bp, admin_bp, subsonic_bp, update_bp, analytics_bp, podcasts_bp, oauth_bp
+
+try:
+    from flask_socketio import SocketIO, emit as socket_emit
+    socketio = SocketIO()
+    _HAS_SOCKETIO = True
+except ImportError:
+    socketio = None
+    _HAS_SOCKETIO = False
 
 def create_app():
     app = Flask(__name__, static_folder=None)
     app.secret_key = FLASK_SECRET_KEY
     app.config['SESSION_COOKIE_HTTPONLY'] = True
     app.config['SESSION_COOKIE_SAMESITE'] = 'Strict'
-    app.config['SESSION_COOKIE_SECURE'] = False
+    app.config['SESSION_COOKIE_SECURE'] = os.environ.get('SESSION_COOKIE_SECURE', 'False').lower() == 'true'
     app.config['PERMANENT_SESSION_LIFETIME'] = timedelta(hours=24)
     app.config['SESSION_PERMANENT'] = True
+    app.config['MAX_CONTENT_LENGTH'] = _MAX_CONTENT_LENGTH
+
+    if _HAS_SOCKETIO:
+        socketio_cors = os.environ.get('SOCKETIO_CORS_ORIGIN', CORS_ORIGIN)
+        socketio.init_app(app, cors_allowed_origins=socketio_cors, async_mode='threading')
+        from routes.admin import register_socketio_events
+        register_socketio_events(socketio)
 
     @app.after_request
     def add_cors_headers(response):
@@ -48,7 +63,10 @@ def create_app():
     @app.before_request
     def csrf_check():
         if request.method in ('POST', 'PUT', 'DELETE'):
-            if '/api/login' in request.path:
+            if '/api/login' in request.path or '/api/subsonic/' in request.path or '/api/auth/forgot-password' in request.path or '/api/auth/reset-password' in request.path:
+                return
+            auth = request.headers.get('Authorization', '')
+            if auth.startswith('Bearer '):
                 return
             csrf = request.headers.get('X-CSRF-Token', '')
             if not csrf or not secrets.compare_digest(csrf, session.get('csrf_token', '')):
@@ -61,10 +79,15 @@ def create_app():
     app.register_blueprint(downloads_bp)
     app.register_blueprint(playlists_bp)
     app.register_blueprint(admin_bp)
+    app.register_blueprint(subsonic_bp)
+    app.register_blueprint(update_bp)
+    app.register_blueprint(analytics_bp)
+    app.register_blueprint(podcasts_bp)
+    app.register_blueprint(oauth_bp)
 
     @app.route('/')
     def index():
-        return jsonify({'app': 'NEOTOKYO FM', 'version': '2.0', 'status': 'ok'})
+        return jsonify({'app': 'NEOTOKYO FM', 'version': '5.1', 'status': 'ok'})
 
     @app.route('/api/csrf-token')
     def get_csrf_token():
@@ -74,31 +97,69 @@ def create_app():
 
     @app.route('/api/metrics')
     def api_metrics():
+        import os, time
+        from config import _start_time, DEFAULT_DOWNLOAD_DIR
+        from models.db import get_db
+        uptime = time.time() - _start_time
+        lines = [
+            '# HELP neotokyo_uptime_seconds Server uptime in seconds',
+            '# TYPE neotokyo_uptime_seconds gauge',
+            f'neotokyo_uptime_seconds {uptime}',
+            '# HELP neotokyo_build_info Build info',
+            '# TYPE neotokyo_build_info gauge',
+            'neotokyo_build_info{version="2.0",python="3.12"} 1',
+        ]
+        try:
+            files = [f for f in os.listdir(DEFAULT_DOWNLOAD_DIR) if os.path.isfile(os.path.join(DEFAULT_DOWNLOAD_DIR, f))]
+            lines.append('# HELP neotokyo_files_total Total files in download directory')
+            lines.append('# TYPE neotokyo_files_total gauge')
+            lines.append(f'neotokyo_files_total {len(files)}')
+        except Exception:
+            pass
+        try:
+            lines.append('# HELP neotokyo_circuit_breaker_state Circuit breaker state (0=closed, 1=open, 2=half_open)')
+            lines.append('# TYPE neotokyo_circuit_breaker_state gauge')
+            for cb in list_breakers():
+                state_val = 0 if cb['state'] == 'closed' else (1 if cb['state'] == 'open' else 2)
+                lines.append(f'neotokyo_circuit_breaker_state{{name="{cb["name"]}"}} {state_val}')
+        except Exception:
+            pass
+        try:
+            from models.download_state import _downloads
+            lines.append('# HELP neotokyo_download_bytes_total Total bytes downloaded')
+            lines.append('# TYPE neotokyo_download_bytes_total counter')
+            total_dl_bytes = sum(d.get('downloaded_bytes', 0) for d in _downloads.values())
+            lines.append(f'neotokyo_download_bytes_total {total_dl_bytes}')
+        except Exception:
+            pass
+        try:
+            conn = get_db()
+            play_count = conn.execute('SELECT COUNT(*) FROM play_log').fetchone()[0]
+            conn.close()
+            lines.append('# HELP neotokyo_active_streams Active play events')
+            lines.append('# TYPE neotokyo_active_streams gauge')
+            lines.append(f'neotokyo_active_streams {play_count}')
+        except Exception:
+            pass
+        try:
+            dirpath = os.path.join(os.path.dirname(DEFAULT_DOWNLOAD_DIR), 'playlists')
+            radio_count = len(os.listdir(dirpath)) if os.path.isdir(dirpath) else 0
+            lines.append('# HELP neotokyo_radio_connections Radio station count')
+            lines.append('# TYPE neotokyo_radio_connections gauge')
+            lines.append(f'neotokyo_radio_connections {radio_count}')
+        except Exception:
+            pass
+        # Append prometheus standard metrics if available
         try:
             import prometheus_client
             from prometheus_client import REGISTRY, generate_latest, CONTENT_TYPE_LATEST
-            metrics = generate_latest(REGISTRY)
-            return Response(metrics, mimetype=CONTENT_TYPE_LATEST)
+            prom = generate_latest(REGISTRY).decode()
+            for line in prom.splitlines():
+                if not line.startswith('#'):
+                    lines.append(line)
         except Exception:
-            import os, time
-            from config import _start_time, DEFAULT_DOWNLOAD_DIR
-            uptime = time.time() - _start_time
-            lines = [
-                '# HELP neotokyo_uptime_seconds Server uptime in seconds',
-                '# TYPE neotokyo_uptime_seconds gauge',
-                f'neotokyo_uptime_seconds {uptime}',
-                '# HELP neotokyo_build_info Build info',
-                '# TYPE neotokyo_build_info gauge',
-                'neotokyo_build_info{version="2.0",python="3.12"} 1',
-            ]
-            try:
-                files = [f for f in os.listdir(DEFAULT_DOWNLOAD_DIR) if os.path.isfile(os.path.join(DEFAULT_DOWNLOAD_DIR, f))]
-                lines.append('# HELP neotokyo_files_total Total files in download directory')
-                lines.append('# TYPE neotokyo_files_total gauge')
-                lines.append(f'neotokyo_files_total {len(files)}')
-            except Exception:
-                pass
-            return Response('\n'.join(lines) + '\n', mimetype='text/plain; charset=utf-8')
+            pass
+        return Response('\n'.join(lines) + '\n', mimetype='text/plain; charset=utf-8')
 
     @app.route('/api/health')
     def api_health():
@@ -109,11 +170,13 @@ def create_app():
                 ffmpeg_ver = r.stdout.split('\n')[0].strip()
         except Exception:
             pass
+        cb_lrclib = get_breaker('lrclib', threshold=10, cooldown=300)
         return jsonify({
             'status': 'ok',
             'timestamp': datetime.datetime.utcnow().isoformat() + 'Z',
             'ffmpeg': ffmpeg_ver,
-            'lrclib': not _lrclib_disabled,
+            'lrclib': not cb_lrclib.is_open(),
+            'circuit_breakers': list_breakers(),
             'python': sys.version,
             'download_dir': DEFAULT_DOWNLOAD_DIR,
         })
@@ -135,6 +198,15 @@ def _periodic_maintenance():
     while True:
         time.sleep(3600)
         wal_checkpoint()
+        try:
+            from models.db import get_db
+            conn = get_db()
+            conn.execute('DELETE FROM visit_log WHERE id NOT IN (SELECT id FROM visit_log ORDER BY id DESC LIMIT 500)')
+            conn.execute("DELETE FROM password_reset_tokens WHERE expires < datetime('now')")
+            conn.commit()
+            conn.close()
+        except Exception:
+            pass
 
 def _daily_auto_backup():
     while True:
@@ -173,9 +245,45 @@ def main():
     os.makedirs(METADATA_DIR, exist_ok=True)
     init_db()
 
+    _env_pw = os.environ.get('ADMIN_PASSWORD', '').strip()
+    if _env_pw:
+        try:
+            from models.db import get_user_by_username, update_user_password
+            from werkzeug.security import check_password_hash, generate_password_hash
+            admin = get_user_by_username('admin')
+            if admin and not check_password_hash(admin['password_hash'], _env_pw):
+                update_user_password(admin['id'], generate_password_hash(_env_pw))
+                logger.info("Synced ADMIN_PASSWORD from env to DB")
+        except Exception as e:
+            logger.warning(f"Failed to sync admin password: {e}")
+
+    try:
+        from alembic.config import Config
+        from alembic import command
+        alembic_cfg = Config(os.path.join(os.path.dirname(__file__), 'alembic.ini'))
+        command.upgrade(alembic_cfg, 'head')
+    except Exception as e:
+        logger.warning(f"Alembic migration skipped: {e}")
+
     threading.Thread(target=icy_poll_worker, daemon=True).start()
     threading.Thread(target=_periodic_maintenance, daemon=True).start()
     threading.Thread(target=_daily_auto_backup, daemon=True).start()
+
+    try:
+        from workers.podcast_scheduler import run_auto_download
+        threading.Thread(target=run_auto_download, daemon=True).start()
+        logger.info("Podcast auto-download scheduler started")
+    except Exception as e:
+        logger.info(f"Podcast scheduler not started: {e}")
+
+    try:
+        from config import WATCHER_ENABLED
+        if WATCHER_ENABLED:
+            from workers.watcher import start_watcher
+            threading.Thread(target=start_watcher, daemon=True).start()
+            logger.info("File watcher started")
+    except Exception as e:
+        logger.info(f"Watcher not started: {e}")
 
     app = create_app()
     logger.info(f"NEOTOKYO FM starting on {HOST}:{PORT}")

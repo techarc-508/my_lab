@@ -3,9 +3,12 @@ from flask import request, jsonify, Response
 from . import radio_bp
 from config import STREAMING_DOMAINS, DEFAULT_DOWNLOAD_DIR, HTTP_SESSION
 from utils.file_utils import is_streaming_url
-from utils.security import auth_required, require_auth, validate_external_url
+from utils.security import auth_required, require_auth, validate_external_url, rate_limit
 from services.icy import get_cached_now_playing
 from services.radio_stations import load_stations, save_stations
+from utils.circuit_breaker import get_breaker
+
+_radio_breaker = get_breaker('radio-proxy', threshold=5, cooldown=60)
 
 logger = logging.getLogger('batch_dl')
 
@@ -40,6 +43,7 @@ def resolve_redirect(url, timeout=10):
     return url
 
 @radio_bp.route('/radio-proxy')
+@rate_limit(30, 60)
 def radio_proxy():
     url = request.args.get('url', '').strip()
     if not url:
@@ -48,7 +52,7 @@ def radio_proxy():
     if not validate_external_url(resolved):
         return jsonify({'error': 'Station URL rejected'}), 403
     try:
-        resp = fetch(resolved, timeout=10)
+        resp = _radio_breaker.call(fetch, resolved, timeout=10)
         if resp is None:
             return jsonify({'error': 'Station unreachable — try another station'}), 502
         ct = resp.headers.get('Content-Type', '')
@@ -170,7 +174,7 @@ def radio_search():
             continue
         # Quick connectivity test
         try:
-            r = HTTP_SESSION.get(url, stream=True, timeout=5, allow_redirects=True)
+            r = HTTP_SESSION.get(url, stream=True, timeout=3, allow_redirects=True)
             ct = r.headers.get('Content-Type', '')
             is_audio = ct.startswith('audio/') or 'ogg' in ct or 'mpeg' in ct
             payload = r.raw.read(512)

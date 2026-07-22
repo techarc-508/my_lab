@@ -1113,7 +1113,7 @@ chore: bump yt-dlp to 2026.06.09
 - Filenames with non-Latin-1 characters in headers (ETag). Server now URL-encodes ETag values — should be fixed. If you see this, update the header encoding.
 
 ### Getting Help
-Open a GitHub issue at https://github.com/anomalyco/mini_radio/issues
+Open a GitHub issue at https://github.com/techarc-508/retro-music-player/issues
 
 ---
 

@@ -2,13 +2,9 @@ import requests, logging, os, threading, time, re, html, json
 from concurrent.futures import ThreadPoolExecutor, as_completed, TimeoutError as FuturesTimeout
 from config import LRCLIB_TIMEOUT, LRCLIB_SKIP, HTTP_SESSION, METADATA_DIR
 from urllib.parse import quote
+from utils.circuit_breaker import get_breaker
 
-_lrclib_failures = 0
-_lrclib_max_failures = 10
-_lrclib_disabled = False
-_lrclib_disabled_at = 0.0
-_lrclib_cooldown = 300
-_lrclib_lock = threading.Lock()
+_lrclib_breaker = get_breaker('lrclib', threshold=10, cooldown=300)
 
 logger = logging.getLogger('batch_dl')
 
@@ -570,15 +566,8 @@ def fetch_lyrics_from_lrclib(basename, title_hint='', artist_hint='', audio_path
 
     Total timeout per file: ~15 seconds. Returns plain text lyrics or None.
     """
-    global _lrclib_failures, _lrclib_disabled, _lrclib_disabled_at
-
-    with _lrclib_lock:
-        if LRCLIB_SKIP:
-            return None
-        if _lrclib_disabled and time.time() - _lrclib_disabled_at > _lrclib_cooldown:
-            _lrclib_disabled = False
-            _lrclib_failures = 0
-            logger.info("LRCLIB circuit breaker reset after cooldown")
+    if LRCLIB_SKIP or _lrclib_breaker.is_open():
+        return None
 
     # Check in-memory cache
     with _cache_lock:
@@ -615,9 +604,7 @@ def fetch_lyrics_from_lrclib(basename, title_hint='', artist_hint='', audio_path
     cleaned_title = _clean_title(lrc_title)
     cleaned_artist = _clean_artist(lrc_artist) if lrc_artist else ''
 
-    # Determine if LRCLIB should be tried
-    with _lrclib_lock:
-        include_lrclib = not _lrclib_disabled
+    include_lrclib = not _lrclib_breaker.is_open()
 
     # Try all sources in parallel
     lrc_text = _try_all_sources(
@@ -629,17 +616,10 @@ def fetch_lyrics_from_lrclib(basename, title_hint='', artist_hint='', audio_path
     with _cache_lock:
         _lyrics_cache[basename] = {'time': time.time(), 'lyrics': lrc_text}
 
-    # Update circuit breaker based on LRCLIB result
     if lrc_text:
-        with _lrclib_lock:
-            _lrclib_failures = 0
+        _lrclib_breaker.reset()
         logger.info(f"Found lyrics for: {cleaned_title or basename}")
     else:
-        with _lrclib_lock:
-            _lrclib_failures += 1
-            if _lrclib_failures >= _lrclib_max_failures:
-                _lrclib_disabled = True
-                _lrclib_disabled_at = time.time()
-                logger.warning("LRCLIB circuit breaker opened (too many failures)")
+        _lrclib_breaker._fail()
 
     return lrc_text

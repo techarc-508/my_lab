@@ -37,7 +37,7 @@ function EqSlider({ index, value, onChange, curveColor }: {
 
   return (
     <div className="flex flex-col items-center gap-1 flex-1">
-      <span className="text-[9px] font-mono text-content-secondary tabular-nums" style={{ color: value > 0 ? curveColor : value < 0 ? '#FF6B8A' : undefined }}>
+      <span className="text-[9px] font-mono text-content-secondary tabular-nums" style={{ color: value > 0 ? curveColor : value < 0 ? '#ff007f' : undefined }}>
         {value > 0 ? `+${value}` : value}
       </span>
       <div
@@ -52,7 +52,7 @@ function EqSlider({ index, value, onChange, curveColor }: {
             height: `${pct}%`,
             background: value >= 0
               ? `linear-gradient(to top, ${curveColor}, ${curveColor}88)`
-              : `linear-gradient(to top, #FF6B8A88, #FF6B8A)`,
+              : `linear-gradient(to top, #ff007f88, #ff007f)`,
             opacity: 0.7,
           }}
         />
@@ -61,8 +61,8 @@ function EqSlider({ index, value, onChange, curveColor }: {
           style={{
             bottom: `${pct}%`,
             marginBottom: '-6px',
-            borderColor: value >= 0 ? curveColor : '#FF6B8A',
-            background: 'var(--color-surface-raised, #211F38)',
+            borderColor: value >= 0 ? curveColor : '#ff007f',
+            background: 'var(--color-surface-raised)',
           }}
         />
       </div>
@@ -111,7 +111,7 @@ export default function EQPanel() {
     if (b) audioEngine.applyEqBands(b)
   }, [setPreset])
 
-  const curveColor = 'var(--color-brand, #8B5CF6)'
+  const curveColor = '#ff007f'
 
   const svgPath = useMemo(() => {
     const w = 400, h = 80, pad = 8
@@ -187,7 +187,7 @@ export default function EQPanel() {
                 onClick={() => handlePreset(name)}
                 className={`px-3 py-1 rounded-full text-[10px] font-semibold transition-all ${
                   activePreset === name
-                    ? 'bg-brand text-white shadow-glow-pink-sm'
+                    ? 'bg-neon-pink text-white shadow-glow-pink-sm'
                     : 'bg-surface-overlay text-content-secondary hover:text-content-primary hover:bg-white/10'
                 }`}
               >

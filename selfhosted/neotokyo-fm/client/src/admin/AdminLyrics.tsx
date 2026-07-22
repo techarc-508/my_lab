@@ -1,7 +1,7 @@
-import { useState, useEffect, useMemo } from 'react'
-import { fetchLyrics, ensureCsrfToken } from '../services/grabberAPI'
+import { useState, useEffect, useMemo, useRef } from 'react'
+import { fetchLyrics, getCsrfToken } from '../services/grabberAPI'
 import { showToast } from '../components/ui/StreamToast'
-import { Music, FileText, CheckCircle, XCircle, Loader2, RefreshCw, Search, SkipForward, AlertTriangle } from 'lucide-react'
+import { Music, FileText, CheckCircle, XCircle, Loader2, RefreshCw, Search, SkipForward, AlertTriangle, Upload } from 'lucide-react'
 
 interface LyricsFile {
   name: string
@@ -17,11 +17,12 @@ export default function AdminLyrics() {
   const [fetching, setFetching] = useState(false)
   const [fetchSingle, setFetchSingle] = useState<string | null>(null)
   const [result, setResult] = useState<{ fetched: number; skipped: number; errors: number; files: { filename: string; status: string }[] } | null>(null)
+  const fileInputRef = useRef<HTMLInputElement>(null)
   const [search, setSearch] = useState('')
   const [tab, setTab] = useState<'missing' | 'all'>('missing')
 
   useEffect(() => {
-    ensureCsrfToken().then(loadFiles)
+    loadFiles()
   }, [])
 
   const loadFiles = async () => {
@@ -86,6 +87,20 @@ export default function AdminLyrics() {
     setFetchSingle(null)
   }
 
+  const handleLrcUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (!file || !file.name.endsWith('.lrc')) { showToast('Please select an .lrc file', 'error'); return }
+    const formData = new FormData()
+    formData.append('lrc', file)
+    try {
+
+      const res = await fetch('/api/lyrics/upload', { method: 'POST', headers: { 'X-CSRF-Token': getCsrfToken() }, credentials: 'include', body: formData })
+      if (res.ok) { showToast(`Uploaded ${file.name}`, 'success'); loadFiles() }
+      else { showToast('Upload failed', 'error') }
+    } catch { showToast('Upload failed', 'error') }
+    e.target.value = ''
+  }
+
   const statusLabel = (s: string) => {
     switch (s) {
       case 'ok': return <span className="text-success">Fetched</span>
@@ -96,7 +111,7 @@ export default function AdminLyrics() {
   }
 
   return (
-    <div className="p-6" style={{ background: '#0A0A2E' }}>
+    <div className="p-6 bg-surface-deep">
       <h2 className="text-xl font-display tracking-[3px] text-transparent bg-clip-text bg-gradient-to-r from-hot-pink to-purple mb-5 flex items-center gap-2"><FileText size={18} /> LYRICS MANAGER</h2>
 
       <div className="grid grid-cols-1 xl:grid-cols-4 gap-4 mb-5">
@@ -116,6 +131,11 @@ export default function AdminLyrics() {
               <RefreshCw size={13} />
               Force Re-fetch All
             </button>
+            <label className="flex items-center gap-2 px-3 py-2 rounded-lg border border-border-default text-content-secondary text-[11px] font-body hover:border-hot-pink/40 hover:text-hot-pink transition-all cursor-pointer">
+              <Upload size={13} />
+              Upload LRC
+              <input ref={fileInputRef} type="file" accept=".lrc" className="hidden" onChange={handleLrcUpload} />
+            </label>
             <button onClick={loadFiles} disabled={loading}
               className="flex items-center gap-1 px-2 py-1.5 rounded-md text-[10px] font-body text-content-tertiary hover:text-white transition-all">
               <RefreshCw size={10} className={loading ? 'animate-spin' : ''} /> Refresh

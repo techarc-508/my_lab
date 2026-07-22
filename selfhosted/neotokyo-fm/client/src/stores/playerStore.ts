@@ -43,13 +43,29 @@ interface PlayerState {
   showQueue: boolean
   showEqualizer: boolean
   showLyrics: boolean
+  showNowPlayingOverlay: boolean
   recentlyPlayed: PlaylistItem[]
   eqBands: number[]
   activeEqPreset: string
   isRadio: boolean
   likedSongs: string[]
+  scanlines: boolean
+  username: string
+  role: string
+  prefetchEnabled: boolean
+  offlineTracks: string[]
+  loudnessEnabled: boolean
+  loudnessMode: 'track' | 'album'
+  currentLoudnessGain: number
+  videoMode: boolean
+  currentVideoId: string | null
+  videoThumbnail: string | null
+  videoTitle: string | null
+  miniPlayer: boolean
 
   setTrack: (track: PlaylistItem | null) => void
+  toggleNowPlayingOverlay: () => void
+  toggleScanlines: () => void
   setPlaying: (v: boolean) => void
   setCurrentTime: (t: number) => void
   setDuration: (d: number) => void
@@ -76,6 +92,16 @@ interface PlayerState {
   toggleLike: (track: PlaylistItem) => Promise<void>
   setEqBand: (index: number, value: number) => void
   setEqPreset: (name: string) => void
+  setUser: (username: string, role: string) => void
+  cacheOffline: (url: string, name: string) => Promise<void>
+  removeOffline: (url: string) => void
+  setLoudnessEnabled: (v: boolean) => void
+  setLoudnessMode: (m: 'track' | 'album') => void
+  setCurrentLoudnessGain: (v: number) => void
+  setVideoMode: (enabled: boolean) => void
+  setCurrentVideo: (videoId: string, thumbnail: string, title: string) => void
+  clearVideo: () => void
+  setMiniPlayer: (enabled: boolean) => void
 }
 
 const MAX_RECENT = 50
@@ -117,11 +143,25 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
   showQueue: false,
   showEqualizer: false,
   showLyrics: false,
+  showNowPlayingOverlay: false,
   recentlyPlayed: loadPersisted<PlaylistItem[]>(RECENT_KEY, []),
   eqBands: [...EQ_PRESETS.Normal],
   activeEqPreset: 'Normal',
   isRadio: false,
   likedSongs: loadPersisted<string[]>('likedSongs', []),
+  scanlines: true,
+  username: '',
+  role: '',
+  prefetchEnabled: true,
+  offlineTracks: loadPersisted<string[]>('offlineTracks', []),
+  loudnessEnabled: loadPersisted<boolean>('loudnessEnabled', false),
+  loudnessMode: loadPersisted<'track' | 'album'>('loudnessMode', 'track'),
+  currentLoudnessGain: 0,
+  videoMode: loadPersisted<boolean>('videoMode', false),
+  currentVideoId: null,
+  videoThumbnail: null,
+  videoTitle: null,
+  miniPlayer: loadPersisted<boolean>('miniPlayer', false),
 
   setTrack: (track) => {
     if (track) {
@@ -150,6 +190,8 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
   toggleShowQueue: () => set(s => ({ showQueue: !s.showQueue })),
   toggleShowEqualizer: () => set(s => ({ showEqualizer: !s.showEqualizer })),
   toggleShowLyrics: () => set(s => ({ showLyrics: !s.showLyrics })),
+  toggleNowPlayingOverlay: () => set(s => ({ showNowPlayingOverlay: !s.showNowPlayingOverlay })),
+  toggleScanlines: () => set(s => ({ scanlines: !s.scanlines })),
 
   setEqBand: (index, value) => set(s => {
     const bands = [...s.eqBands]
@@ -222,6 +264,44 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
     savePersisted(RECENT_KEY, updated)
     return { recentlyPlayed: updated }
   }),
+
+  setUser: (username, role) => set({ username, role }),
+
+  cacheOffline: async (url, name) => {
+    try {
+      const resp = await fetch(url)
+      const blob = await resp.blob()
+      const cache = await caches.open('neotokyo-offline')
+      await cache.put(url, new Response(blob))
+      set(s => {
+        const next = s.offlineTracks.includes(url) ? s.offlineTracks : [...s.offlineTracks, url]
+        savePersisted('offlineTracks', next)
+        return { offlineTracks: next }
+      })
+    } catch {}
+  },
+
+  removeOffline: (url) => set(s => {
+    caches.open('neotokyo-offline').then(c => c.delete(url)).catch(() => {})
+    const next = s.offlineTracks.filter(u => u !== url)
+    savePersisted('offlineTracks', next)
+    return { offlineTracks: next }
+  }),
+
+  setLoudnessEnabled: (v) => { set({ loudnessEnabled: v }); savePersisted('loudnessEnabled', v) },
+  setLoudnessMode: (m) => { set({ loudnessMode: m }); savePersisted('loudnessMode', m) },
+  setCurrentLoudnessGain: (v) => set({ currentLoudnessGain: v }),
+
+  setVideoMode: (enabled) => {
+    set({ videoMode: enabled })
+    savePersisted('videoMode', enabled)
+    if (!enabled) {
+      set({ currentVideoId: null, videoThumbnail: null, videoTitle: null })
+    }
+  },
+  setCurrentVideo: (videoId, thumbnail, title) => set({ currentVideoId: videoId, videoThumbnail: thumbnail, videoTitle: title }),
+  clearVideo: () => set({ currentVideoId: null, videoThumbnail: null, videoTitle: null }),
+  setMiniPlayer: (enabled) => { set({ miniPlayer: enabled }); savePersisted('miniPlayer', enabled) },
 
   toggleLike: async (track) => {
     const { likedSongs } = get()

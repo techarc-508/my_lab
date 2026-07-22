@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { scanMetadata, searchAlbumArt, applyAlbumArt, updateFileTags, listFiles, getMetadata, ensureCsrfToken, findCover } from '../services/grabberAPI'
+import { scanMetadata, searchAlbumArt, applyAlbumArt, updateFileTags, listFiles, getMetadata, findCover, getScannerStatus } from '../services/grabberAPI'
 import { showToast } from '../components/ui/StreamToast'
 import { Search, Image, Check, X, Loader2, RefreshCw, Music, Globe } from 'lucide-react'
 import type { AlbumArtResult } from '../types/audio'
@@ -23,17 +23,36 @@ export default function AdminScanner() {
   const [coverJobs, setCoverJobs] = useState<CoverJob[]>([])
   const [coverRunning, setCoverRunning] = useState(false)
   const [coverDone, setCoverDone] = useState(false)
+  const [scanProgress, setScanProgress] = useState(0)
+  const [scanStatus, setScanStatus] = useState('')
 
-  useEffect(() => { ensureCsrfToken().then(() => loadFiles()) }, [])
+  useEffect(() => { loadFiles() }, [])
+
+  // Poll scanner status during scan
+  useEffect(() => {
+    if (!scanning) return
+    const poll = setInterval(async () => {
+      try {
+        const d = await getScannerStatus()
+        setScanProgress(d.progress || 0)
+        setScanStatus(d.status || '')
+        if (d.done) { setScanning(false); setScanProgress(0); setScanStatus(''); showToast(d.message || 'Scan complete', 'success'); await loadFiles() }
+      } catch {}
+    }, 600)
+    return () => clearInterval(poll)
+  }, [scanning])
 
   const handleScan = async () => {
     setScanning(true)
+    setScanProgress(0)
+    setScanStatus('Starting...')
     try {
       const res = await scanMetadata()
-      showToast(`Scanned ${res.scanned} files`, 'success')
-      await loadFiles()
-    } catch { showToast('Scan failed', 'error') }
-    setScanning(false)
+      if (!res.running) {
+        setScanning(false)
+        showToast(res.scanned ? `Scanned ${res.scanned} files` : 'No new files to scan', 'success')
+      }
+    } catch { setScanning(false); showToast('Scan failed', 'error') }
   }
 
   const loadFiles = async () => {
@@ -43,10 +62,7 @@ export default function AdminScanner() {
       const withMeta = await Promise.all(
         data.files.map(async (f: any) => {
           let meta = { title: '', artist: '', album: '', hasCover: false }
-          try {
-            const m = await getMetadata(f.name)
-            meta = { title: m.title || '', artist: m.artist || '', album: m.album || '', hasCover: m.has_cover }
-          } catch {}
+          try { const m = await getMetadata(f.name); meta = { title: m.title || '', artist: m.artist || '', album: m.album || '', hasCover: m.has_cover } } catch {}
           return { name: f.name, title: meta.title, artist: meta.artist, album: meta.album, hasCover: meta.hasCover, candidates: [], searching: false, expanded: false }
         })
       )
@@ -75,10 +91,8 @@ export default function AdminScanner() {
         setFiles(prev => prev.map((ff, i) => i === idx ? { ...ff, candidates: fb.results || [], searching: false } : ff))
       }
     } catch {
-      try {
-        const fb = await searchAlbumArt(f.title, f.artist)
-        setFiles(prev => prev.map((ff, i) => i === idx ? { ...ff, candidates: fb.results || [], searching: false } : ff))
-      } catch { setFiles(prev => prev.map((ff, i) => i === idx ? { ...ff, searching: false } : ff)) }
+      try { const fb = await searchAlbumArt(f.title, f.artist); setFiles(prev => prev.map((ff, i) => i === idx ? { ...ff, candidates: fb.results || [], searching: false } : ff)) }
+      catch { setFiles(prev => prev.map((ff, i) => i === idx ? { ...ff, searching: false } : ff)) }
     }
   }
 
@@ -99,7 +113,6 @@ export default function AdminScanner() {
     setCoverJobs(jobs)
     setCoverRunning(true)
     setCoverDone(false)
-
     for (let i = 0; i < jobs.length; i++) {
       const job = jobs[i]
       setCoverJobs(prev => prev.map((j, ji) => ji === i ? { ...j, status: 'searching' } : j))
@@ -107,29 +120,17 @@ export default function AdminScanner() {
         const res = await findCover(job.name, job.title, job.artist)
         if (res.cover_url) {
           setCoverJobs(prev => prev.map((j, ji) => ji === i ? { ...j, status: 'applying', source: res.source, coverUrl: res.cover_url } : j))
-          try {
-            await applyAlbumArt(job.name, res.cover_url)
-            setCoverJobs(prev => prev.map((j, ji) => ji === i ? { ...j, status: 'done' } : j))
-          } catch {
-            setCoverJobs(prev => prev.map((j, ji) => ji === i ? { ...j, status: 'failed', error: 'Apply failed' } : j))
-          }
+          try { await applyAlbumArt(job.name, res.cover_url); setCoverJobs(prev => prev.map((j, ji) => ji === i ? { ...j, status: 'done' } : j)) }
+          catch { setCoverJobs(prev => prev.map((j, ji) => ji === i ? { ...j, status: 'failed', error: 'Apply failed' } : j)) }
         } else {
           const sres = await searchAlbumArt(job.title, job.artist)
           if (sres.results && sres.results.length > 0) {
             setCoverJobs(prev => prev.map((j, ji) => ji === i ? { ...j, status: 'applying', source: 'itunes', coverUrl: sres.results[0].artwork } : j))
-            try {
-              await applyAlbumArt(job.name, sres.results[0].artwork)
-              setCoverJobs(prev => prev.map((j, ji) => ji === i ? { ...j, status: 'done' } : j))
-            } catch {
-              setCoverJobs(prev => prev.map((j, ji) => ji === i ? { ...j, status: 'failed', error: 'Apply failed' } : j))
-            }
-          } else {
-            setCoverJobs(prev => prev.map((j, ji) => ji === i ? { ...j, status: 'failed', error: 'No source found' } : j))
-          }
+            try { await applyAlbumArt(job.name, sres.results[0].artwork); setCoverJobs(prev => prev.map((j, ji) => ji === i ? { ...j, status: 'done' } : j)) }
+            catch { setCoverJobs(prev => prev.map((j, ji) => ji === i ? { ...j, status: 'failed', error: 'Apply failed' } : j)) }
+          } else { setCoverJobs(prev => prev.map((j, ji) => ji === i ? { ...j, status: 'failed', error: 'No source found' } : j)) }
         }
-      } catch {
-        setCoverJobs(prev => prev.map((j, ji) => ji === i ? { ...j, status: 'failed', error: 'Search error' } : j))
-      }
+      } catch { setCoverJobs(prev => prev.map((j, ji) => ji === i ? { ...j, status: 'failed', error: 'Search error' } : j)) }
     }
     setCoverRunning(false)
     setCoverDone(true)
@@ -139,7 +140,6 @@ export default function AdminScanner() {
   }
 
   const closeOverlay = () => { setCoverJobs([]); setCoverDone(false) }
-
   const missingCover = files.filter(f => !f.hasCover).length
   const needsMeta = files.filter(f => !f.title).length
   const coverTotal = coverJobs.length
@@ -148,26 +148,26 @@ export default function AdminScanner() {
   const sourceLabel: Record<string, string> = { source_url: 'Source URL', itunes: 'iTunes', youtube: 'YouTube' }
 
   return (
-    <div className="p-6" style={{ background: '#0A0A2E' }}>
-        <h2 className="text-xl font-display tracking-[3px] text-transparent bg-clip-text bg-gradient-to-r from-hot-pink to-purple mb-5 flex items-center gap-2"><Image size={18} /> ALBUM ART SCANNER</h2>
+    <div className="p-6 bg-surface-deep">
+      <h2 className="text-xl font-display tracking-[3px] text-transparent bg-clip-text bg-gradient-to-r from-hot-pink to-purple mb-5 flex items-center gap-2"><Image size={18} /> ALBUM ART SCANNER</h2>
 
       <div className="grid grid-cols-1 xl:grid-cols-2 gap-4 mb-6">
         <div className="bg-surface-raised border border-border-default/30 rounded-lg p-5">
           <h3 className="text-[10px] font-display tracking-[2px] text-hot-pink uppercase mb-2 flex items-center gap-1.5"><Search size={12} /> Scan Metadata</h3>
-          <p className="text-[11px] font-body text-content-tertiary mb-3">
-            Scan audio files to create sidecar metadata.
-          </p>
+          <p className="text-[11px] font-body text-content-tertiary mb-3">Scan audio files to create sidecar metadata.</p>
           <div className="flex items-center gap-3">
             <button onClick={handleScan} disabled={scanning}
               className="flex items-center gap-2 px-4 py-2 rounded-md bg-gradient-to-r from-hot-pink to-purple text-white text-[11px] font-body tracking-[1px] uppercase hover:brightness-110 active:brightness-90 disabled:opacity-35 disabled:cursor-not-allowed transition-all shadow-glow-pink-sm">
               {scanning ? <Loader2 size={13} className="animate-spin" /> : <Search size={13} />}
               {scanning ? 'Scanning...' : 'Scan New Files'}
             </button>
+            {/* Progress bar for scan */}
             {scanning && (
-              <div className="flex-1">
-                <div className="h-1 bg-surface-sunken rounded-full overflow-hidden">
-                  <div className="h-full bg-gradient-to-r from-hot-pink to-purple rounded-full animate-scan-progress" />
+              <div className="flex-1 space-y-1">
+                <div className="h-1.5 bg-surface-sunken rounded-full overflow-hidden">
+                  <div className="h-full bg-gradient-to-r from-hot-pink to-purple rounded-full transition-all duration-300" style={{ width: `${scanProgress}%` }} />
                 </div>
+                {scanStatus && <p className="text-[9px] font-body text-content-tertiary truncate">{scanStatus}</p>}
               </div>
             )}
           </div>
@@ -175,13 +175,10 @@ export default function AdminScanner() {
 
         <div className="bg-surface-raised border border-border-default/30 rounded-lg p-5">
           <h3 className="text-[10px] font-display tracking-[2px] text-purple uppercase mb-2 flex items-center gap-1.5"><Image size={12} /> Album Art</h3>
-          <p className="text-[11px] font-body text-content-tertiary mb-3">
-            {missingCover > 0 ? `${missingCover} file(s) missing covers.` : 'All files have covers.'}
-          </p>
+          <p className="text-[11px] font-body text-content-tertiary mb-3">{missingCover > 0 ? `${missingCover} file(s) missing covers.` : 'All files have covers.'}</p>
           <button onClick={handleFixAllMissing} disabled={missingCover === 0}
             className="flex items-center gap-2 px-4 py-2 rounded-md bg-electric-blue/20 border border-electric-blue/30 text-electric-blue text-[11px] font-body tracking-[1px] uppercase hover:bg-electric-blue/30 disabled:opacity-35 disabled:cursor-not-allowed transition-all">
-            <Image size={13} />
-            Fix All Covers {missingCover > 0 ? `(${missingCover})` : ''}
+            <Image size={13} /> Fix All Covers {missingCover > 0 ? `(${missingCover})` : ''}
           </button>
         </div>
       </div>
@@ -201,21 +198,14 @@ export default function AdminScanner() {
       {loading ? (
         <div className="flex items-center justify-center py-16"><Loader2 size={22} className="animate-spin text-content-tertiary" /></div>
       ) : files.length === 0 ? (
-        <div className="flex flex-col items-center gap-3 mt-12 text-content-tertiary">
-          <Music size={28} />
-          <p className="text-xs font-body">No songs loaded. Scan new files to find songs missing metadata.</p>
-        </div>
+        <div className="flex flex-col items-center gap-3 mt-12 text-content-tertiary"><Music size={28} /><p className="text-xs font-body">No songs loaded. Scan new files to find songs missing metadata.</p></div>
       ) : (
         <div className="space-y-2 max-h-[70vh] overflow-y-auto">
           {files.map((f, idx) => (
             <div key={f.name} className="bg-surface-raised/50 border border-border-default/20 rounded-lg hover:border-hot-pink/20 transition-all overflow-hidden">
               <div className="flex items-center gap-3 p-3 cursor-pointer" onClick={() => toggleExpand(idx)}>
                 <div className="w-10 h-10 rounded-md bg-gradient-to-br from-hot-pink/10 to-purple/10 flex items-center justify-center overflow-hidden shrink-0 border border-border-default/30">
-                  {f.hasCover ? (
-                    <img src={`/api/cover/${encodeURIComponent(f.name)}`} className="w-full h-full object-cover" />
-                  ) : (
-                    <Music size={15} className="text-hot-pink/40" />
-                  )}
+                  {f.hasCover ? <img src={`/api/cover/${encodeURIComponent(f.name)}`} className="w-full h-full object-cover" /> : <Music size={15} className="text-hot-pink/40" />}
                 </div>
                 <div className="flex-1 min-w-0">
                   <p className="text-xs font-body text-content-primary truncate">{f.title || f.name}</p>
@@ -227,7 +217,6 @@ export default function AdminScanner() {
                   {f.title && f.artist && <span className="text-[9px] font-body text-success/60">✓</span>}
                 </div>
               </div>
-
               {f.expanded && (
                 <div className="px-3 pb-3 border-t border-border-default/20 pt-2">
                   <div className="grid grid-cols-3 gap-2 mb-2">
@@ -250,23 +239,14 @@ export default function AdminScanner() {
                       </button>
                     )}
                   </div>
-
-                  {f.searching && (
-                    <div className="flex items-center gap-2 text-[10px] font-body text-content-tertiary py-2">
-                      <Loader2 size={11} className="animate-spin" /> Searching source URL / iTunes / YouTube...
-                    </div>
-                  )}
-
+                  {f.searching && <div className="flex items-center gap-2 text-[10px] font-body text-content-tertiary py-2"><Loader2 size={11} className="animate-spin" /> Searching source URL / iTunes / YouTube...</div>}
                   {f.candidates.length > 0 && (
                     <div className="space-y-1.5">
                       <p className="text-[10px] font-body text-content-tertiary">Candidates:</p>
                       <div className="flex gap-2 overflow-x-auto pb-1">
                         {f.candidates.map((c, ci) => (
-                          <div key={ci}
-                            onClick={() => setSelectedArt(prev => ({ ...prev, [f.name]: c.artwork }))}
-                            className={`shrink-0 w-24 rounded-lg overflow-hidden border-2 cursor-pointer transition-all ${
-                              selectedArt[f.name] === c.artwork ? 'border-hot-pink shadow-glow-pink-sm' : 'border-transparent hover:border-purple/50'
-                            }`}>
+                          <div key={ci} onClick={() => setSelectedArt(prev => ({ ...prev, [f.name]: c.artwork }))}
+                            className={`shrink-0 w-24 rounded-lg overflow-hidden border-2 cursor-pointer transition-all ${selectedArt[f.name] === c.artwork ? 'border-hot-pink shadow-glow-pink-sm' : 'border-transparent hover:border-purple/50'}`}>
                             <img src={c.artwork} className="w-24 h-24 object-cover" />
                             <div className="p-1 bg-surface-sunken">
                               <p className="text-[8px] font-body truncate text-content-primary">{c.title}</p>
@@ -283,7 +263,6 @@ export default function AdminScanner() {
                       )}
                     </div>
                   )}
-
                   {!f.searching && f.expanded && f.candidates.length === 0 && f.title && (
                     <p className="text-[10px] font-body text-content-tertiary">No cover found — tried source URL, iTunes, and YouTube.</p>
                   )}
@@ -305,9 +284,7 @@ export default function AdminScanner() {
               <div className="h-1.5 bg-surface-sunken rounded-full overflow-hidden">
                 <div className="h-full bg-gradient-to-r from-hot-pink to-purple rounded-full transition-all duration-300 shadow-glow-pink-sm" style={{ width: `${coverProgress}%` }} />
               </div>
-              <p className="text-[9px] font-body text-content-tertiary mt-1">
-                {coverRunning ? 'Processing...' : coverDone ? 'Complete' : ''}
-              </p>
+              <p className="text-[9px] font-body text-content-tertiary mt-1">{coverRunning ? 'Processing...' : coverDone ? 'Complete' : ''}</p>
             </div>
             <div className="flex-1 overflow-y-auto p-3 space-y-1">
               {coverJobs.map((job, i) => (
@@ -326,25 +303,14 @@ export default function AdminScanner() {
                     <div className="flex items-center gap-2 text-[9px] font-body text-content-tertiary">
                       {job.status === 'searching' && <span>Searching...</span>}
                       {job.status === 'applying' && <span>Applying cover...</span>}
-                      {job.status === 'done' && job.source && (
-                        <span className="flex items-center gap-1 text-success/60">
-                          <Globe size={9} /> {sourceLabel[job.source] || job.source}
-                        </span>
-                      )}
+                      {job.status === 'done' && job.source && <span className="flex items-center gap-1 text-success/60"><Globe size={9} /> {sourceLabel[job.source] || job.source}</span>}
                       {job.status === 'failed' && <span className="text-error/60">{job.error || 'Failed'}</span>}
                     </div>
                   </div>
                 </div>
               ))}
             </div>
-            {coverDone && (
-              <div className="p-3 border-t border-border-default/30 flex justify-end">
-                <button onClick={closeOverlay}
-                  className="px-4 py-2 rounded-md bg-electric-blue/20 border border-electric-blue/30 text-electric-blue text-[10px] font-body tracking-[0.5px] uppercase hover:bg-electric-blue/30 transition-all">
-                  Close
-                </button>
-              </div>
-            )}
+            {coverDone && <div className="p-3 border-t border-border-default/30 flex justify-end"><button onClick={closeOverlay} className="px-4 py-2 rounded-md bg-electric-blue/20 border border-electric-blue/30 text-electric-blue text-[10px] font-body tracking-[0.5px] uppercase hover:bg-electric-blue/30 transition-all">Close</button></div>}
           </div>
         </div>
       )}
@@ -355,10 +321,7 @@ export default function AdminScanner() {
           50% { transform: translateX(0%); }
           100% { transform: translateX(100%); }
         }
-        .animate-scan-progress {
-          width: 40%;
-          animation: scan-progress 1.5s ease-in-out infinite;
-        }
+        .animate-scan-progress { width: 40%; animation: scan-progress 1.5s ease-in-out infinite; }
       `}</style>
     </div>
   )

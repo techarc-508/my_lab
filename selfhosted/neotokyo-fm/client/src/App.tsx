@@ -1,8 +1,10 @@
 import { lazy, Suspense, useEffect } from 'react'
 import { Routes, Route } from 'react-router-dom'
+import { emit } from './services/eventBus'
 import AppShell from './components/layout/AppShell'
 import AdminLayout from './admin/AdminLayout'
 import AdminLoginModal from './admin/AdminLoginModal'
+import VideoOverlay from './components/player/VideoOverlay'
 import { PageSkeleton } from './components/ui/Skeleton'
 import { usePlayerStore } from './stores/playerStore'
 
@@ -11,6 +13,8 @@ const LibraryPage = lazy(() => import('./pages/LibraryPage'))
 const RadioPage = lazy(() => import('./pages/RadioPage'))
 const YouTubePage = lazy(() => import('./pages/YouTubePage'))
 const PlaylistsPage = lazy(() => import('./pages/PlaylistsPage'))
+const PodcastsPage = lazy(() => import('./pages/PodcastsPage'))
+const SettingsPage = lazy(() => import('./pages/SettingsPage'))
 const AdminDashboard = lazy(() => import('./admin/AdminDashboard'))
 const AdminImport = lazy(() => import('./admin/AdminImport'))
 const AdminRadio = lazy(() => import('./admin/AdminRadio'))
@@ -22,6 +26,8 @@ const AdminBrowse = lazy(() => import('./admin/AdminBrowse'))
 const AdminSongs = lazy(() => import('./admin/AdminSongs'))
 const AdminScanner = lazy(() => import('./admin/AdminScanner'))
 const AdminLyrics = lazy(() => import('./admin/AdminLyrics'))
+const AdminUsers = lazy(() => import('./admin/AdminUsers'))
+const AdminPodcasts = lazy(() => import('./admin/AdminPodcasts'))
 
 function Lazy({ children }: { children: React.ReactNode }) {
   return <Suspense fallback={<PageSkeleton />}>{children}</Suspense>
@@ -33,6 +39,7 @@ export default function App() {
     document.documentElement.classList.toggle('dark', theme === 'dark')
   }, [theme])
   return (
+    <>
     <Routes>
       <Route element={<AppShell />}>
         <Route path="/" element={<Lazy><HomePage /></Lazy>} />
@@ -40,12 +47,15 @@ export default function App() {
         <Route path="/radio" element={<Lazy><RadioPage /></Lazy>} />
         <Route path="/youtube" element={<Lazy><YouTubePage /></Lazy>} />
         <Route path="/playlists" element={<Lazy><PlaylistsPage /></Lazy>} />
+        <Route path="/podcasts" element={<Lazy><PodcastsPage /></Lazy>} />
+        <Route path="/settings" element={<Lazy><SettingsPage /></Lazy>} />
       </Route>
       <Route path="/admin" element={<AdminLayout />}>
         <Route index element={<Lazy><AdminDashboard /></Lazy>} />
         <Route path="dashboard" element={<Lazy><AdminDashboard /></Lazy>} />
         <Route path="import" element={<Lazy><AdminImport /></Lazy>} />
         <Route path="radio" element={<Lazy><AdminRadio /></Lazy>} />
+        <Route path="podcasts" element={<Lazy><AdminPodcasts /></Lazy>} />
         <Route path="backups" element={<Lazy><AdminBackups /></Lazy>} />
         <Route path="settings" element={<Lazy><AdminSettings /></Lazy>} />
         <Route path="webhooks" element={<Lazy><AdminWebhooks /></Lazy>} />
@@ -54,8 +64,11 @@ export default function App() {
         <Route path="logs" element={<Lazy><AdminLogs /></Lazy>} />
         <Route path="scanner" element={<Lazy><AdminScanner /></Lazy>} />
         <Route path="lyrics" element={<Lazy><AdminLyrics /></Lazy>} />
+        <Route path="users" element={<Lazy><AdminUsers /></Lazy>} />
       </Route>
       <Route path="/admin/login" element={<AdminLoginModal />} />
     </Routes>
+    <VideoOverlay />
+    </>
   )
 }

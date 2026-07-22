@@ -6,6 +6,7 @@ const SHORTCUTS = [
   { keys: '↑ ↓', desc: 'Volume ±10%' },
   { keys: '+ / -', desc: 'Volume ±10%' },
   { keys: 'S', desc: 'Toggle Shuffle' },
+  { keys: '⇧+S', desc: 'Toggle Scanlines' },
   { keys: 'R', desc: 'Cycle Repeat' },
   { keys: 'M', desc: 'Toggle Mute' },
   { keys: 'E', desc: 'Toggle Equalizer' },

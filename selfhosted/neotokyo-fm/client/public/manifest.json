@@ -1,0 +1,47 @@
+{
+  "name": "NEOTOKYO FM",
+  "short_name": "NEOTOKYO",
+  "description": "Self-hosted internet radio, music player & YouTube streaming",
+  "start_url": "/",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#07060e",
+  "theme_color": "#ff007f",
+  "categories": ["music", "entertainment", "video"],
+  "shortcuts": [
+    {
+      "name": "YouTube Search",
+      "short_name": "YouTube",
+      "description": "Search and play YouTube videos",
+      "url": "/youtube",
+      "icons": [{ "src": "/favicon.svg", "sizes": "any", "type": "image/svg+xml" }]
+    },
+    {
+      "name": "Radio",
+      "short_name": "Radio",
+      "description": "Listen to internet radio stations",
+      "url": "/radio",
+      "icons": [{ "src": "/favicon.svg", "sizes": "any", "type": "image/svg+xml" }]
+    },
+    {
+      "name": "Library",
+      "short_name": "Library",
+      "description": "Browse your music library",
+      "url": "/library",
+      "icons": [{ "src": "/favicon.svg", "sizes": "any", "type": "image/svg+xml" }]
+    }
+  ],
+  "share_target": {
+    "action": "/api/upload",
+    "method": "POST",
+    "enctype": "multipart/form-data",
+    "params": {
+      "files": [{ "name": "file", "accept": ["audio/*", "video/*"] }]
+    }
+  },
+  "icons": [
+    { "src": "/favicon.svg", "sizes": "any", "type": "image/svg+xml" },
+    { "src": "/favicon.svg", "sizes": "192x192", "type": "image/svg+xml", "purpose": "any maskable" },
+    { "src": "/favicon.svg", "sizes": "512x512", "type": "image/svg+xml", "purpose": "any maskable" }
+  ]
+}

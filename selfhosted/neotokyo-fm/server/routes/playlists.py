@@ -38,7 +38,11 @@ def _save_playlists(playlists):
 
 @playlists_bp.route('/playlists', methods=['GET'])
 def list_playlists():
-    return jsonify(_load_playlists())
+    playlists = _load_playlists()
+    user_id = getattr(request, 'user_id', None)
+    if user_id:
+        playlists = [pl for pl in playlists if pl.get('user_id') == user_id or pl.get('user_id') is None]
+    return jsonify(playlists)
 
 @playlists_bp.route('/playlists', methods=['POST'])
 @auth_required
@@ -50,6 +54,9 @@ def create_playlist():
     if len(name) > 128:
         return jsonify({'error': 'name must be 128 characters or fewer'}), 400
     pl = {'name': name, 'tracks': [], 'created': time.time()}
+    user_id = getattr(request, 'user_id', None)
+    if user_id:
+        pl['user_id'] = user_id
     playlists = _load_playlists()
     playlists.append(pl)
     _save_playlists(playlists)

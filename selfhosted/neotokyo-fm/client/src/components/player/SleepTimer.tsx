@@ -37,16 +37,16 @@ export default function SleepTimer() {
   return (
     <div className="relative">
       <button onClick={() => setOpen(o => !o)}
-        className={`flex items-center gap-1 text-[10px] ${sleepEnd ? 'text-pink-400' : 'text-[#5c3f45]'} hover:text-white`}>
+        className={`flex items-center gap-1 text-[10px] ${sleepEnd ? 'text-pink-400' : 'text-text-muted'} hover:text-white`}>
         <Clock size={12} />
         {remaining || 'Sleep'}
       </button>
       {open && (
-        <div className="absolute bottom-full right-0 mb-2 bg-[#0b0c1f] border border-[#2a2a4a]/50 rounded-lg p-2 shadow-xl z-50">
+        <div className="absolute bottom-full right-0 mb-2 bg-surface-deep border border-border-subtle/50 rounded-lg p-2 shadow-xl z-50">
           <div className="flex gap-1">
             {PRESETS.map(p => (
               <button key={p.label} onClick={() => handlePreset(p.ms)}
-                className="px-2 py-1 text-[10px] rounded bg-[#1d1e31] hover:bg-pink-500/20 hover:text-pink-300">
+                className="px-2 py-1 text-[10px] rounded bg-surface-card hover:bg-pink-500/20 hover:text-pink-300">
                 {p.label}
               </button>
             ))}

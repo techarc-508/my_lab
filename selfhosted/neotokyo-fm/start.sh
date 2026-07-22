@@ -105,7 +105,25 @@ case "${1:-start}" in
     echo "── Client log ──"
     tail -20 "$CLIENT_LOG"
     ;;
+  update)
+    echo "── Updating NEOTOKYO FM ──"
+    cd "$SERVER_DIR/.."
+    git fetch origin
+    git stash 2>/dev/null
+    if git rebase origin/main 2>/dev/null || git pull --ff-only; then
+      echo "  ✓ Code updated"
+      cd "$SERVER_DIR"
+      pip install -r requirements.txt -q 2>/dev/null && echo "  ✓ Server deps updated" || echo "  ! Server deps skipped"
+      cd "$CLIENT_DIR"
+      npm ci --silent 2>/dev/null && npm run build 2>/dev/null && echo "  ✓ Client rebuilt" || echo "  ! Client build skipped"
+      echo "  Restarting services..."
+      exec "$0" restart
+    else
+      echo "  ✗ Update failed — check git status"
+      exit 1
+    fi
+    ;;
   *)
-    echo "Usage: $0 {start|stop|status|restart|logs}"
+    echo "Usage: $0 {start|stop|status|restart|logs|update}"
     ;;
 esac

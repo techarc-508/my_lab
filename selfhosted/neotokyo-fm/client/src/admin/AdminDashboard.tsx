@@ -101,7 +101,7 @@ export default function AdminDashboard() {
   ]
 
   return (
-    <div className="p-6 space-y-4" style={{ background: '#0A0A2E' }}>
+    <div className="p-6 space-y-4 bg-surface-deep">
       <h2 className="text-xl font-display tracking-[3px] text-transparent bg-clip-text bg-gradient-to-r from-hot-pink to-purple flex items-center gap-2"><BarChart3 size={18} /> DASHBOARD</h2>
 
       {/* Stat Tiles */}

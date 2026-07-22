@@ -1,14 +1,20 @@
-import re, requests, logging
+import re, logging, urllib.parse
 from flask import request, jsonify, Response
 from . import youtube_bp
 from config import HAS_YTDLP, HTTP_SESSION
 from utils.file_utils import extract_filename_from_url, is_streaming_url
-from utils.security import auth_required
+from utils.security import auth_required, rate_limit
 from models.cache import LRUCache
+from utils.circuit_breaker import get_breaker
 import yt_dlp
+
+_yt_search_breaker = get_breaker('yt-search', threshold=5, cooldown=60)
+_yt_playlist_breaker = get_breaker('yt-playlist', threshold=3, cooldown=120)
+_yt_video_resolve_breaker = get_breaker('yt-video-resolve', threshold=5, cooldown=60)
 
 logger = logging.getLogger('batch_dl')
 search_cache = LRUCache(maxsize=64, ttl=300)
+video_resolve_cache = LRUCache(maxsize=128, ttl=3600)
 
 def search_youtube_all(query: str, max_total=50):
     cached = search_cache.get(query)
@@ -16,7 +22,7 @@ def search_youtube_all(query: str, max_total=50):
         return cached
     with yt_dlp.YoutubeDL({
         'quiet': True, 'no_warnings': True, 'extract_flat': True,
-        'skip_download': True, 'no-playlist': True,
+        'skip_download': True, 'no-playlist': True, 'socket_timeout': 20,
     }) as ydl:
         info = ydl.extract_info(f'ytsearch{max_total}:{query}', download=False)
         entries = info.get('entries', []) if info else []
@@ -35,6 +41,7 @@ def search_youtube_all(query: str, max_total=50):
 
 @youtube_bp.route('/yt-search', methods=['POST'])
 @auth_required
+@rate_limit(20, 60)
 def yt_search():
     if not HAS_YTDLP: return jsonify({'error': 'yt-dlp not installed'}), 400
     data = request.get_json() or {}
@@ -45,14 +52,15 @@ def yt_search():
     except (TypeError, ValueError): per_page = 10
     if not query: return jsonify({'error': 'No query'}), 400
     try:
-        all_results = search_youtube_all(query, max_total=50)
+        all_results = _yt_search_breaker.call(search_youtube_all, query, max_total=50)
         total = len(all_results)
         start = (page - 1) * per_page
         end = start + per_page
         page_results = all_results[start:end]
         return jsonify({'results': page_results, 'count': len(page_results), 'total': total, 'has_more': end < total})
     except Exception as e:
-        return jsonify({'error': str(e)[:200]}), 400
+        code = 503 if 'breaker' in str(type(e)).lower() else 400
+        return jsonify({'error': str(e)[:200]}), code
 
 @youtube_bp.route('/yt-proxy/<video_id>')
 def yt_proxy(video_id):
@@ -65,7 +73,7 @@ def yt_proxy(video_id):
             if not url:
                 return jsonify({'error': 'Could not extract audio URL'}), 500
             duration = info.get('duration', 0)
-            resp = requests.get(url, stream=True, timeout=30)
+            resp = HTTP_SESSION.get(url, stream=True, timeout=30)
             resp.raise_for_status()
             ctype = resp.headers.get('Content-Type', 'audio/webm')
             def generate():
@@ -78,16 +86,51 @@ def yt_proxy(video_id):
                 'Accept-Ranges': 'bytes',
             })
     except Exception as e:
-        return jsonify({'error': str(e)[:200]}), 500
+        return jsonify({'error': str(e)[:200]}), 503
+
+@youtube_bp.route('/yt-stream/<video_id>')
+def yt_stream(video_id):
+    if not HAS_YTDLP:
+        return jsonify({'error': 'yt-dlp not available'}), 503
+    try:
+        with yt_dlp.YoutubeDL({
+            'format': 'best[height<=720]/best',
+            'quiet': True, 'no_warnings': True,
+        }) as ydl:
+            info = ydl.extract_info(f'https://www.youtube.com/watch?v={video_id}', download=False)
+            url = info.get('url', '')
+            if not url:
+                return jsonify({'error': 'Could not extract video URL'}), 500
+            resp = HTTP_SESSION.get(url, stream=True, timeout=30, headers={'Range': request.headers.get('Range', '')})
+            resp.raise_for_status()
+            ctype = resp.headers.get('Content-Type', 'video/mp4')
+            headers = {
+                'Content-Type': ctype,
+                'Accept-Ranges': 'bytes',
+                'Access-Control-Allow-Origin': '*',
+                'Cache-Control': 'no-cache',
+            }
+            if resp.headers.get('Content-Length'):
+                headers['Content-Length'] = resp.headers['Content-Length']
+            if resp.headers.get('Content-Range'):
+                headers['Content-Range'] = resp.headers['Content-Range']
+            def generate():
+                for chunk in resp.iter_content(chunk_size=65536):
+                    if chunk:
+                        yield chunk
+            return Response(generate(), status=resp.status_code, headers=headers)
+    except Exception as e:
+        return jsonify({'error': str(e)[:200]}), 503
 
 @youtube_bp.route('/expand-playlist', methods=['POST'])
 @auth_required
+@rate_limit(20, 60)
 def expand_playlist():
     data = request.get_json()
     url = data.get('url', '').strip()
     if not url or not HAS_YTDLP: return jsonify({'error': 'Invalid URL or no yt-dlp'}), 400
-    try:
-        with yt_dlp.YoutubeDL({'quiet':True,'no_warnings':True,'extract_flat':True,'skip_download':True}) as ydl:
+    def _do_expand():
+        with yt_dlp.YoutubeDL({'quiet':True,'no_warnings':True,'extract_flat':True,'skip_download':True,'socket_timeout':20}) as ydl:
             info = ydl.extract_info(url, download=False)
             if info.get('_type') == 'playlist':
                 entries = info.get('entries', [])
@@ -98,8 +141,10 @@ def expand_playlist():
             title = info.get('title', '')
             fallback = title if title else extract_filename_from_url(url)
             return jsonify({'files': [{'url': url, 'filename': fallback, 'title': title}], 'count': 1})
+    try:
+        return _yt_playlist_breaker.call(_do_expand)
     except Exception as e:
-        return jsonify({'error': str(e)[:100]}), 400
+        return jsonify({'error': str(e)[:100]}), 503
 
 @youtube_bp.route('/preview', methods=['POST'])
 @auth_required
@@ -127,3 +172,44 @@ def preview_downloads():
         results.append(info)
     total_size = sum(r.get('filesize', 0) or 0 for r in results)
     return jsonify({'files': results, 'count': len(results), 'total_size': total_size})
+
+def _resolve_video_id(track_name: str):
+    cached = video_resolve_cache.get(track_name)
+    if cached is not None:
+        return cached
+    query = f'{track_name} audio'
+    with yt_dlp.YoutubeDL({
+        'quiet': True, 'no_warnings': True,
+        'extract_flat': True, 'skip_download': True,
+        'no-playlist': True, 'socket_timeout': 20,
+    }) as ydl:
+        info = ydl.extract_info(f'ytsearch1:{query}', download=False)
+        entries = info.get('entries', []) if info else []
+        if not entries:
+            return None
+        entry = entries[0]
+        result = {
+            'videoId': entry.get('url') or entry.get('webpage_url', ''),
+            'title': entry.get('title', ''),
+            'thumbnail': entry.get('thumbnail', ''),
+            'duration': entry.get('duration', 0),
+        }
+        video_resolve_cache.set(track_name, result)
+        return result
+
+@youtube_bp.route('/yt-video/<path:track_name>')
+@auth_required
+@rate_limit(30, 60)
+def yt_video_resolve(track_name):
+    if not HAS_YTDLP:
+        return jsonify({'error': 'yt-dlp not installed'}), 500
+    decoded_name = urllib.parse.unquote(track_name)
+    if not decoded_name.strip():
+        return jsonify({'error': 'Empty track name'}), 400
+    try:
+        result = _yt_video_resolve_breaker.call(_resolve_video_id, decoded_name)
+        if result is None:
+            return jsonify({'error': 'not found'}), 404
+        return jsonify(result)
+    except Exception as e:
+        return jsonify({'error': str(e)[:200]}), 500

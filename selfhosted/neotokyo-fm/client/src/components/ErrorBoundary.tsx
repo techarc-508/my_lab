@@ -17,7 +17,7 @@ export default class ErrorBoundary extends Component<Props, State> {
       return (
         <div className="p-6 text-center">
           <p className="text-red-400 text-sm">Something went wrong</p>
-          <p className="text-[10px] text-[#5c3f45] mt-1">{this.state.error.message}</p>
+          <p className="text-[10px] text-text-muted mt-1">{this.state.error.message}</p>
           <button onClick={() => this.setState({ error: null })} className="mt-3 text-xs text-cyan-400 hover:underline">
             Retry
           </button>

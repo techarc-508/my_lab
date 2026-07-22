@@ -64,7 +64,7 @@ VMID=$(pvesh get /cluster/nextid 2>/dev/null || echo "200")
 info "Using VM ID: $VMID"
 
 # ─── Template ────────────────────────────────────────────────────────
-TEMPLATE_PATH=$(pveam list "$STORAGE" 2>/dev/null | grep "$TEMPLATE" | head -1 | awk '{print $2}' || true)
+TEMPLATE_PATH=$(pveam list "$STORAGE" 2>/dev/null | grep "$TEMPLATE" | head -1 | awk '{print $1}' || true)
 if [[ -z "$TEMPLATE_PATH" ]]; then
     info "Downloading LXC template $TEMPLATE..."
     pveam download "$STORAGE" "$TEMPLATE" || err "Failed to download template"

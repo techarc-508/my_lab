@@ -1,12 +1,18 @@
 import { API_BASE } from '../config'
-import type { HealthResponse, ServerSettings, BatchRecord, RadioStation, Download, NowPlaying, YTSearchResult, PlaylistItem, SystemInfo, FileMeta, BackupRecord, AlbumArtResult } from '../types/audio'
+import type { HealthResponse, ServerSettings, BatchRecord, RadioStation, Download, NowPlaying, YTSearchResult, PlaylistItem, SystemInfo, FileMeta, BackupRecord, AlbumArtResult, AuthResponse, UserRecord, UserProfile, Session, Podcast, PodcastEpisode, PodcastCategory, PodcastProgress } from '../types/audio'
 
 const FETCH_TIMEOUT = 8000
 
-let _csrfToken = ''
+function _getToken(): string {
+  try { return localStorage.getItem('neotokyo-auth-token') || '' } catch { return '' }
+}
 
-export function getCsrfToken(): string {
-  return _csrfToken
+function _setToken(token: string) {
+  try { localStorage.setItem('neotokyo-auth-token', token) } catch {}
+}
+
+function _clearToken() {
+  try { localStorage.removeItem('neotokyo-auth-token') } catch {}
 }
 
 async function fetchWithTimeout(url: string, options: RequestInit = {}, timeout = FETCH_TIMEOUT): Promise<Response> {
@@ -20,38 +26,36 @@ async function fetchWithTimeout(url: string, options: RequestInit = {}, timeout 
   }
 }
 
-async function loadCsrfToken(): Promise<void> {
-  try {
-    const res = await fetchWithTimeout(`${API_BASE}/api/csrf-token`, { credentials: 'include' })
-    if (res.ok) {
-      const data = await res.json()
-      _csrfToken = data.csrf_token
-    }
-  } catch {}
-}
-
-export async function ensureCsrfToken(): Promise<void> {
-  if (!_csrfToken) await loadCsrfToken()
-}
-
 async function req<T>(path: string, options: RequestInit = {}): Promise<T> {
-  if (!_csrfToken && options.method && options.method !== 'GET') {
-    await ensureCsrfToken()
-  }
   const headers: Record<string, string> = { 'Content-Type': 'application/json' }
-  if (_csrfToken && options.method && options.method !== 'GET') {
-    headers['X-CSRF-Token'] = _csrfToken
+  const token = _getToken()
+  if (token) {
+    headers['Authorization'] = `Bearer ${token}`
   }
   const res = await fetchWithTimeout(`${API_BASE}${path}`, {
     ...options,
     headers: { ...headers, ...options.headers as Record<string, string> },
-    credentials: 'include',
   })
   if (!res.ok) {
     const body = await res.json().catch(() => ({}))
+    if (res.status === 401) {
+      _clearToken()
+    }
     throw new Error(body.error || `HTTP ${res.status}`)
   }
   return res.json()
+}
+
+export function getAuthToken(): string {
+  return _getToken()
+}
+
+export function getCsrfToken(): string {
+  try { return localStorage.getItem('csrfToken') || '' } catch { return '' }
+}
+
+export function isLoggedIn(): boolean {
+  return !!_getToken()
 }
 
 export function getHealth(): Promise<HealthResponse> {
@@ -62,16 +66,93 @@ export function getSettings(): Promise<ServerSettings> {
   return req('/api/settings')
 }
 
-export function login(username: string, password: string): Promise<{ auth: boolean }> {
-  return req('/api/login', { method: 'POST', body: JSON.stringify({ username, password }) })
+export async function login(username: string, password: string): Promise<AuthResponse> {
+  const res = await fetch(`${API_BASE}/api/login`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ username, password }),
+  })
+  const data = await res.json()
+  if (!res.ok) throw new Error(data.error || 'Login failed')
+  if (data.token) _setToken(data.token)
+  return data
 }
 
-export function logout(): Promise<{ auth: boolean }> {
-  return req('/api/logout', { method: 'POST' })
+export async function logout(): Promise<{ auth: boolean }> {
+  const token = _getToken()
+  if (token) {
+    await fetch(`${API_BASE}/api/logout`, {
+      method: 'POST',
+      headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
+    }).catch(() => {})
+    _clearToken()
+  }
+  return { auth: false }
 }
 
-export function checkAuth(): Promise<{ auth: boolean }> {
-  return req('/api/check-auth')
+export async function checkAuth(): Promise<AuthResponse> {
+  const token = _getToken()
+  if (!token) return { auth: false }
+  try {
+    return await req('/api/check-auth')
+  } catch {
+    _clearToken()
+    return { auth: false }
+  }
+}
+
+export function listUsers(): Promise<UserRecord[]> {
+  return req('/api/users')
+}
+
+export function createUserAPI(username: string, password: string, role: string = 'user'): Promise<UserRecord> {
+  return req('/api/users', { method: 'POST', body: JSON.stringify({ username, password, role }) })
+}
+
+// --- Profile API ---
+
+export function getProfile(): Promise<UserProfile> {
+  return req('/api/profile')
+}
+
+export function updateProfile(data: { display_name?: string; email?: string }): Promise<{ ok: boolean }> {
+  return req('/api/profile', { method: 'PUT', body: JSON.stringify(data) })
+}
+
+export function uploadAvatar(file: File, timeout = 30000): Promise<{ ok: boolean; avatar_path: string }> {
+  const form = new FormData()
+  form.append('file', file)
+  return fetchWithTimeout(`${API_BASE}/api/profile/avatar`, {
+    method: 'POST',
+    headers: _authHeaders(),
+    body: form,
+  }, timeout).then(r => { if (!r.ok) throw new Error(`HTTP ${r.status}`); return r.json() })
+}
+
+export function deleteAvatar(): Promise<{ ok: boolean }> {
+  return req('/api/profile/avatar', { method: 'DELETE' })
+}
+
+export function getSessions(): Promise<Session[]> {
+  return req('/api/profile/sessions')
+}
+
+export function revokeSession(sessionId: number): Promise<{ ok: boolean }> {
+  return req(`/api/profile/sessions/${sessionId}`, { method: 'DELETE' })
+}
+
+export function deleteAccount(): Promise<{ ok: boolean }> {
+  return req('/api/profile/account', { method: 'DELETE' })
+}
+
+// --- Admin user management ---
+
+export function updateUser(userId: number, data: { username?: string; role?: string; email?: string; display_name?: string; is_active?: boolean }): Promise<{ ok: boolean }> {
+  return req(`/api/users/${userId}`, { method: 'PUT', body: JSON.stringify(data) })
+}
+
+export function deleteUser(userId: number): Promise<{ ok: boolean }> {
+  return req(`/api/users/${userId}`, { method: 'DELETE' })
 }
 
 export function listFiles(limit = 0, offset = 0): Promise<{ files: FileMeta[]; count: number; total: number }> {
@@ -244,15 +325,19 @@ export function batchUpdateMetadata(files: { name: string; title?: string; artis
   return req('/api/files/batch-update', { method: 'POST', body: JSON.stringify({ files }) })
 }
 
+function _authHeaders(): Record<string, string> {
+  const h: Record<string, string> = {}
+  const t = _getToken()
+  if (t) h['Authorization'] = `Bearer ${t}`
+  return h
+}
+
 export function uploadCover(name: string, file: File, timeout = 30000): Promise<{ ok: boolean }> {
   const form = new FormData()
   form.append('file', file)
-  const headers: Record<string, string> = {}
-  if (_csrfToken) headers['X-CSRF-Token'] = _csrfToken
   return fetchWithTimeout(`${API_BASE}/api/files/cover/${encodeURIComponent(name)}`, {
     method: 'POST',
-    headers,
-    credentials: 'include',
+    headers: _authHeaders(),
     body: form,
   }, timeout).then(r => { if (!r.ok) throw new Error(`HTTP ${r.status}`); return r.json() })
 }
@@ -284,18 +369,19 @@ export function getRecentVisits(limit = 30): Promise<{ ip: string; username: str
 export function uploadLocalFile(file: File, timeout = 120000): Promise<{ ok: boolean; filename: string; size: number }> {
   const form = new FormData()
   form.append('file', file)
-  const headers: Record<string, string> = {}
-  if (_csrfToken) headers['X-CSRF-Token'] = _csrfToken
   return fetchWithTimeout(`${API_BASE}/api/upload`, {
     method: 'POST',
-    headers,
-    credentials: 'include',
+    headers: _authHeaders(),
     body: form,
   }, timeout).then(r => { if (!r.ok) throw new Error(`HTTP ${r.status}`); return r.json() })
 }
 
-export function scanMetadata(): Promise<{ scanned: number }> {
+export function scanMetadata(): Promise<{ scanned: number; running?: boolean }> {
   return req('/api/scan-metadata', { method: 'POST', body: JSON.stringify({}) })
+}
+
+export function getScannerStatus(): Promise<any> {
+  return req('/api/scanner-status')
 }
 
 export function searchAlbumArt(title: string, artist?: string): Promise<{ results: AlbumArtResult[]; count: number }> {
@@ -316,4 +402,133 @@ export function updateFileTags(filename: string, updates: Record<string, string>
 
 export function fetchLyrics(filename?: string, target: 'all' | 'force' = 'all'): Promise<{ fetched: number; skipped: number; errors: number; files: { filename: string; status: string }[] }> {
   return req('/api/fetch-lyrics', { method: 'POST', body: JSON.stringify({ filename, target }) })
+}
+
+export function searchFiles(query: string): Promise<{ results: any[]; count: number }> {
+  return req(`/api/search?q=${encodeURIComponent(query)}`)
+}
+
+export function resolveVideoId(trackName: string): Promise<{ videoId: string; thumbnail: string; title: string; duration: number } | null> {
+  return fetch(`${API_BASE}/api/yt-video/${encodeURIComponent(trackName)}`, {
+    headers: { 'Authorization': `Bearer ${_getToken()}` },
+  }).then(r => {
+    if (!r.ok) return null
+    return r.json()
+  }).catch(() => null)
+}
+
+export function checkForUpdate(): Promise<{ current: string; latest: string; update_available: boolean; release_notes: string }> {
+  return req('/api/update/check')
+}
+
+export function applyUpdate(): Promise<{ status: string }> {
+  return req('/api/update/apply', { method: 'POST' })
+}
+
+export function getUpdateStatus(): Promise<{ status: string; message: string }> {
+  return req('/api/update/status')
+}
+
+export function getLibraryTree(): Promise<{ tree: any[]; count: number }> {
+  return req('/api/library/tree')
+}
+
+export function getAnalyticsOverview(): Promise<{ top_tracks: any[]; top_artists: any[]; plays_24h: number; total_plays: number }> {
+  return req('/api/analytics/overview')
+}
+
+export function getIngestionLog(limit = 20): Promise<any[]> {
+  return req(`/api/admin/ingestion-log?limit=${limit}`)
+}
+
+// --- Podcast API ---
+
+export function listPodcasts(): Promise<Podcast[]> {
+  return req('/api/podcasts')
+}
+
+export function subscribePodcast(feedUrl: string): Promise<Podcast> {
+  return req('/api/podcasts', { method: 'POST', body: JSON.stringify({ feed_url: feedUrl }) })
+}
+
+export function getPodcast(id: number): Promise<Podcast> {
+  return req(`/api/podcasts/${id}`)
+}
+
+export function unsubscribePodcast(id: number): Promise<{ ok: boolean }> {
+  return req(`/api/podcasts/${id}`, { method: 'DELETE' })
+}
+
+export function syncPodcast(id: number): Promise<{ ok: boolean }> {
+  return req(`/api/podcasts/${id}/sync`, { method: 'POST' })
+}
+
+export function syncAllPodcasts(): Promise<{ syncing: number }> {
+  return req('/api/podcasts/sync-all', { method: 'POST' })
+}
+
+export function toggleAutoDownload(id: number, enabled: boolean): Promise<{ ok: boolean; auto_download: boolean }> {
+  return req(`/api/podcasts/${id}/auto-download`, { method: 'PUT', body: JSON.stringify({ enabled }) })
+}
+
+export function listPodcastEpisodes(id: number, limit = 100, offset = 0): Promise<{ episodes: PodcastEpisode[]; count: number; total: number }> {
+  return req(`/api/podcasts/${id}/episodes?limit=${limit}&offset=${offset}`)
+}
+
+export function markEpisodePlayed(episodeId: number): Promise<{ ok: boolean }> {
+  return req(`/api/podcasts/episodes/${episodeId}/play`, { method: 'POST' })
+}
+
+export function downloadPodcastEpisode(episodeId: number): Promise<{ ok: boolean; queued?: boolean; filename?: string }> {
+  return req(`/api/podcasts/episodes/${episodeId}/download`, { method: 'POST' })
+}
+
+export function searchPodcasts(query: string): Promise<{ results: Podcast[]; count: number }> {
+  return req(`/api/podcasts/search?q=${encodeURIComponent(query)}`)
+}
+
+export function exportPodcastsOpml(): Promise<Blob> {
+  return fetchWithTimeout(`${API_BASE}/api/podcasts/opml`, {
+    headers: { 'Authorization': `Bearer ${_getToken()}` },
+  }).then(r => { if (!r.ok) throw new Error(`HTTP ${r.status}`); return r.blob() })
+}
+
+export function importPodcastsOpml(xmlContent: string): Promise<{ added: number; total: number }> {
+  return fetchWithTimeout(`${API_BASE}/api/podcasts/opml`, {
+    method: 'POST',
+    headers: { 'Authorization': `Bearer ${_getToken()}`, 'Content-Type': 'text/xml' },
+    body: xmlContent,
+  }).then(r => { if (!r.ok) throw new Error(`HTTP ${r.status}`); return r.json() })
+}
+
+export function subscribePodcastFromYoutube(youtubeUrl: string, title?: string): Promise<Podcast> {
+  return req('/api/podcasts/from-youtube', { method: 'POST', body: JSON.stringify({ youtube_url: youtubeUrl, title }) })
+}
+
+export function adminListPodcasts(): Promise<Podcast[]> {
+  return req('/api/admin/podcasts')
+}
+
+export function adminDeletePodcast(id: number): Promise<{ ok: boolean }> {
+  return req(`/api/admin/podcasts/${id}`, { method: 'DELETE' })
+}
+
+export function adminSyncAllPodcasts(): Promise<{ syncing: number }> {
+  return req('/api/admin/podcasts/sync-all', { method: 'POST' })
+}
+
+export function adminSeedPodcasts(): Promise<{ ok: boolean; count: number }> {
+  return req('/api/admin/podcasts/seed', { method: 'POST' })
+}
+
+export function getPodcastCategories(): Promise<PodcastCategory[]> {
+  return req('/api/podcasts/categories')
+}
+
+export function getEpisodeProgress(episodeId: number): Promise<PodcastProgress | null> {
+  return req(`/api/podcasts/episodes/${episodeId}/progress`)
+}
+
+export function setEpisodeProgress(episodeId: number, position: number, duration: number): Promise<{ ok: boolean }> {
+  return req(`/api/podcasts/episodes/${episodeId}/progress`, { method: 'PUT', body: JSON.stringify({ position, duration }) })
 }

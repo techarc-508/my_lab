@@ -2,8 +2,8 @@ services:
   server:
     build: ./server
     container_name: neotokyo-server
-    ports:
-      - "5050:5050"
+    expose:
+      - "5050"
     volumes:
       - ./server/downloads:/app/downloads
       - ./server/logs:/app/logs
@@ -22,6 +22,13 @@ services:
       timeout: 5s
       start_period: 10s
       retries: 3
+    security_opt:
+      - no-new-privileges:true
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+          cpus: "2"
 
   client:
     build: ./client
@@ -32,3 +39,10 @@ services:
       server:
         condition: service_healthy
     restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    deploy:
+      resources:
+        limits:
+          memory: 128M
+          cpus: "0.5"

@@ -13,7 +13,11 @@ logger = logging.getLogger('batch_dl')
 @downloads_bp.route('/downloads', methods=['GET'])
 @auth_required
 def list_downloads_handler():
-    return jsonify(list_downloads_sorted())
+    downloads = list_downloads_sorted()
+    user_id = getattr(request, 'user_id', None)
+    if user_id:
+        downloads = [d for d in downloads if d.get('user_id') == user_id]
+    return jsonify(downloads)
 
 @downloads_bp.route('/downloads', methods=['POST'])
 @auth_required
@@ -103,6 +107,30 @@ def remove_backup(backup_id):
     if delete_backup(backup_id):
         return jsonify({'ok': True})
     return jsonify({'error': 'Not found'}), 404
+
+@downloads_bp.route('/transcode', methods=['POST'])
+@auth_required
+def transcode():
+    data = request.get_json() or {}
+    filename = data.get('filename', '').strip()
+    bitrate = int(data.get('bitrate', 320))
+    if not filename:
+        return jsonify({'error': 'filename required'}), 400
+    safe = safe_path(os.path.basename(filename))
+    if not safe or not os.path.isfile(safe):
+        return jsonify({'error': 'File not found'}), 404
+    import subprocess
+    basename, ext = os.path.splitext(os.path.basename(safe))
+    out_name = f"{basename}_transcode_{bitrate}kpbs.mp3"
+    out_path = os.path.join(DEFAULT_DOWNLOAD_DIR, out_name)
+    try:
+        subprocess.run(['ffmpeg', '-y', '-i', safe, '-b:a', str(bitrate) + 'k', out_path],
+                      capture_output=True, timeout=120, check=True)
+        return jsonify({'ok': True, 'output': out_name})
+    except subprocess.CalledProcessError as e:
+        return jsonify({'error': f"FFmpeg error: {e.stderr[:200]}"}), 500
+    except FileNotFoundError:
+        return jsonify({'error': 'FFmpeg not available'}), 500
 
 @downloads_bp.route('/delete', methods=['POST'])
 @auth_required

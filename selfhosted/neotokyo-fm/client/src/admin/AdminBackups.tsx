@@ -50,7 +50,7 @@ export default function AdminBackups() {
   }
 
   return (
-    <div className="p-6" style={{ background: '#0A0A2E' }}>
+    <div className="p-6 bg-surface-deep">
       <h2 className="text-xl font-display tracking-[3px] text-transparent bg-clip-text bg-gradient-to-r from-hot-pink to-purple mb-5 flex items-center gap-2"><Shield size={18} /> BACKUPS</h2>
 
       <div className="bg-surface-raised border border-electric-blue/20 rounded-lg p-4 mb-5 flex items-start gap-3">

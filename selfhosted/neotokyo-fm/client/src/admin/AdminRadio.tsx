@@ -1,7 +1,7 @@
-import { useState, useEffect } from 'react'
-import { getRadioStations, saveRadioStations, restoreDefaultStations } from '../services/grabberAPI'
+import { useState, useEffect, useRef } from 'react'
+import { getRadioStations, saveRadioStations, restoreDefaultStations, testRadioStation } from '../services/grabberAPI'
 import { showToast } from '../components/ui/StreamToast'
-import { Plus, Trash2, Save, RotateCcw, Radio } from 'lucide-react'
+import { Plus, Trash2, Save, RotateCcw, Radio, GripVertical, Wifi, WifiOff } from 'lucide-react'
 import type { RadioStation } from '../types/audio'
 
 export default function AdminRadio() {
@@ -9,6 +9,10 @@ export default function AdminRadio() {
   const [newName, setNewName] = useState('')
   const [newUrl, setNewUrl] = useState('')
   const [newGenre, setNewGenre] = useState('')
+  const [dragIdx, setDragIdx] = useState<number | null>(null)
+  const dragItem = useRef<number | null>(null)
+  const [testingId, setTestingId] = useState<string | null>(null)
+  const [testStatus, setTestStatus] = useState<Record<string, 'ok' | 'fail'>>({})
 
   useEffect(() => { load() }, [])
 
@@ -26,8 +30,49 @@ export default function AdminRadio() {
 
   const handleRestore = async () => { try { await restoreDefaultStations(); load(); showToast('Defaults restored', 'success') } catch { showToast('Restore failed', 'error') } }
 
+  const handleDragStart = (idx: number) => {
+    dragItem.current = idx
+    setDragIdx(idx)
+  }
+
+  const handleDragOver = (e: React.DragEvent, idx: number) => {
+    e.preventDefault()
+    setDragIdx(idx)
+  }
+
+  const handleDrop = (targetIdx: number) => {
+    const from = dragItem.current
+    if (from === null || from === targetIdx) { setDragIdx(null); dragItem.current = null; return }
+    setStations(prev => {
+      const q = [...prev]
+      const [moved] = q.splice(from, 1)
+      q.splice(targetIdx, 0, moved)
+      return q
+    })
+    setDragIdx(null)
+    dragItem.current = null
+  }
+
+  const handleDragEnd = () => {
+    setDragIdx(null)
+    dragItem.current = null
+  }
+
+  const handleTest = async (id: string) => {
+    setTestingId(id)
+    const s = stations.find(x => x.id === id)
+    if (!s) { setTestingId(null); return }
+    try {
+      const res = await testRadioStation(s.url)
+      setTestStatus(prev => ({ ...prev, [id]: (res as any)?.icy_name !== undefined ? 'ok' : 'fail' }))
+    } catch {
+      setTestStatus(prev => ({ ...prev, [id]: 'fail' }))
+    }
+    setTestingId(null)
+  }
+
   return (
-    <div className="p-6" style={{ background: '#0A0A2E' }}>
+    <div className="p-6 bg-surface-deep">
       <div className="flex items-center justify-between mb-5">
         <h2 className="text-xl font-display tracking-[3px] text-transparent bg-clip-text bg-gradient-to-r from-hot-pink to-purple flex items-center gap-2"><Radio size={18} /> RADIO STATIONS</h2>
         <div className="flex gap-2">
@@ -53,11 +98,32 @@ export default function AdminRadio() {
       </div>
 
       <div className="space-y-1 max-h-[60vh] overflow-y-auto">
-        {stations.map(s => (
-          <div key={s.id} className="flex items-center gap-2 text-xs p-3 rounded-md bg-surface-raised/30 border border-border-default/20 hover:border-hot-pink/20 transition-all">
+        {stations.map((s, i) => (
+          <div
+            key={s.id}
+            draggable
+            onDragStart={() => handleDragStart(i)}
+            onDragOver={(e) => handleDragOver(e, i)}
+            onDrop={() => handleDrop(i)}
+            onDragEnd={handleDragEnd}
+            className={`flex items-center gap-2 text-xs p-3 rounded-md border transition-all ${
+              dragIdx === i
+                ? 'border-brand/30 bg-brand/5'
+                : 'border-border-default/20 bg-surface-raised/30 hover:border-hot-pink/20'
+            }`}
+          >
+            <span className="cursor-grab active:cursor-grabbing text-content-tertiary shrink-0">
+              <GripVertical size={12} />
+            </span>
             <span className="w-36 truncate font-body text-content-primary font-medium">{s.name}</span>
             <span className="flex-1 truncate text-content-tertiary font-mono text-[10px]">{s.url}</span>
             <span className="w-20 text-[10px] font-body text-purple/60">{s.genre}</span>
+            <button onClick={() => handleTest(s.id)} disabled={testingId === s.id}
+              className={`transition-all ${testStatus[s.id] === 'ok' ? 'text-success' : testStatus[s.id] === 'fail' ? 'text-error' : 'text-content-tertiary/40 hover:text-brand'}`}
+              title="Test connectivity">
+              {testingId === s.id ? <span className="inline-block w-3 h-3 border-2 border-current border-t-transparent rounded-full animate-spin" /> :
+               testStatus[s.id] === 'ok' ? <Wifi size={12} /> : <WifiOff size={12} />}
+            </button>
             <button onClick={() => handleRemove(s.id)} className="text-error/40 hover:text-error transition-all"><Trash2 size={12} /></button>
           </div>
         ))}

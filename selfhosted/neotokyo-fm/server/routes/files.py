@@ -4,9 +4,11 @@ from flask import request, jsonify, Response, send_from_directory
 from . import files_bp
 from config import DEFAULT_DOWNLOAD_DIR, HAS_YTDLP, LRCLIB_TIMEOUT, LRCLIB_SKIP, METADATA_DIR
 from utils.file_utils import safe_path, sidecar_cover, sidecar_lyrics, sidecar_info, is_audio_file, ensure_meta_dir, extract_filename_from_url, is_streaming_url, metadata_subdir
-from utils.security import auth_required
+from utils.security import auth_required, rate_limit
 from utils.svg import generate_fallback_svg
-from services.lrclib import _lrclib_disabled
+from utils.circuit_breaker import get_breaker
+
+_lrclib_breaker = get_breaker('lrclib', threshold=10, cooldown=300)
 
 logger = logging.getLogger('batch_dl')
 
@@ -32,7 +34,41 @@ def stream_with_chunk(fp, offset, length):
             remaining -= len(chunk)
             yield chunk
 
+@files_bp.route('/search')
+def search_files():
+    q = request.args.get('q', '').strip()
+    if not q:
+        return jsonify({'results': [], 'count': 0})
+    try:
+        from models.db import search_tracks_fts
+        results = search_tracks_fts(q)
+        return jsonify({'results': results, 'count': len(results)})
+    except Exception:
+        return jsonify({'results': [], 'count': 0})
+
+@files_bp.route('/library/tree')
+def library_tree():
+    tree = []
+    for entry in sorted(os.listdir(DEFAULT_DOWNLOAD_DIR)):
+        if entry.startswith('.'):
+            continue
+        path = os.path.join(DEFAULT_DOWNLOAD_DIR, entry)
+        if os.path.isdir(path):
+            children = []
+            for f in os.listdir(path):
+                if is_audio_file(f):
+                    children.append({
+                        'filename': f'{entry}/{f}',
+                        'name': f,
+                        'size': os.path.getsize(os.path.join(path, f)),
+                    })
+            tree.append({'name': entry, 'type': 'directory', 'children': children})
+        elif is_audio_file(entry):
+            tree.append({'name': entry, 'type': 'file', 'filename': entry, 'size': os.path.getsize(path)})
+    return jsonify({'tree': tree, 'count': len(tree)})
+
 @files_bp.route('/files')
+@rate_limit(100, 60)
 def list_files():
     try:
         limit = request.args.get('limit', type=int, default=0)
@@ -143,7 +179,7 @@ def get_lyrics():
                     return jsonify({'source': 'sidecar', 'lines': plain_lines, 'plain': text})
                 except Exception:
                     pass
-    if not title or LRCLIB_SKIP or _lrclib_disabled:
+    if not title or LRCLIB_SKIP or _lrclib_breaker.is_open():
         return jsonify({'source': None, 'lines': [], 'plain': None})
     try:
         from config import HTTP_SESSION
@@ -313,6 +349,7 @@ def get_metadata(filename):
         return jsonify({'title': os.path.splitext(safe)[0].replace('_', ' ').replace('-', ' ').strip(), 'artist': None, 'album': None, 'album_art': None, 'has_cover': False, 'has_lyrics': False})
 
 @files_bp.route('/metadata-batch', methods=['POST'])
+@auth_required
 def get_metadata_batch():
     import mutagen
     filenames = request.json.get('files', [])
@@ -500,9 +537,11 @@ def delete_cover(filename):
 @files_bp.route('/scan-metadata', methods=['POST'])
 @auth_required
 def scan_metadata():
-    from workers.metadata import scan_for_metadata
+    from workers.metadata import scan_for_metadata, get_scan_status
+    if get_scan_status().get('running'):
+        return jsonify({'scanned': 0, 'running': True}), 200
     count = scan_for_metadata()
-    return jsonify({'scanned': count})
+    return jsonify({'scanned': count, 'running': count < 0})
 
 @files_bp.route('/search-album-art', methods=['POST'])
 @auth_required

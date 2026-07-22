@@ -1,15 +1,24 @@
 import { useState, useEffect } from 'react'
-import { getSettings, retryMetadata, changePassword, clearPlayStats, resetLrclib } from '../services/grabberAPI'
+import { getSettings, retryMetadata, changePassword, clearPlayStats, resetLrclib, getIngestionLog } from '../services/grabberAPI'
 import { showToast } from '../components/ui/StreamToast'
-import { Save, RefreshCw, Settings as SettingsIcon, Trash2, Activity, Download, Shield } from 'lucide-react'
+import { Save, RefreshCw, Settings as SettingsIcon, Trash2, Activity, Download, Shield, Eye, EyeOff, Clock } from 'lucide-react'
 import type { ServerSettings } from '../types/audio'
 
 export default function AdminSettings() {
   const [settings, setSettings] = useState<ServerSettings | null>(null)
   const [newPassword, setNewPassword] = useState('')
   const [newUsername, setNewUsername] = useState('')
+  const [watcherEnabled, setWatcherEnabled] = useState(false)
+  const [ingestionLog, setIngestionLog] = useState<any[]>([])
+  const [showIngestion, setShowIngestion] = useState(false)
 
-  useEffect(() => { getSettings().then(setSettings).catch(() => {}) }, [])
+  useEffect(() => {
+    getSettings().then(s => {
+      setSettings(s);
+      setWatcherEnabled((s as any).watcher_enabled || false);
+    }).catch(() => {})
+    getIngestionLog(20).then(setIngestionLog).catch(() => {})
+  }, [])
 
   const handlePassword = async () => {
     if (!newPassword.trim()) return
@@ -43,7 +52,7 @@ export default function AdminSettings() {
   }
 
   return (
-    <div className="p-6" style={{ background: '#0A0A2E' }}>
+    <div className="p-6 bg-surface-deep">
       <h2 className="text-xl font-display tracking-[3px] text-transparent bg-clip-text bg-gradient-to-r from-hot-pink to-purple mb-5 flex items-center gap-2"><SettingsIcon size={18} /> SETTINGS</h2>
 
       <div className="bg-surface-raised border border-border-default/30 rounded-lg p-5 mb-4">
@@ -58,6 +67,36 @@ export default function AdminSettings() {
             <span className="text-content-tertiary">yt-dlp</span><span className={settings.ytdlp_available ? 'text-success' : 'text-error'}>{settings.ytdlp_available ? 'Available' : 'Not found'}</span>
           </div>
         ) : <p className="text-[10px] font-body text-content-tertiary">Loading...</p>}
+      </div>
+
+      <div className="bg-surface-raised border border-border-default/30 rounded-lg p-5 mb-4">
+        <h3 className="text-xs font-display tracking-[2px] text-success mb-3 uppercase flex items-center gap-2"><Activity size={14} /> Watcher</h3>
+        <div className="flex items-center gap-3 mb-3">
+          <span className="text-[11px] font-body text-content-tertiary">File watcher auto-ingestion</span>
+          <button onClick={() => setWatcherEnabled(!watcherEnabled)}
+            className={`relative w-10 h-5 rounded-full transition-all ${watcherEnabled ? 'bg-success' : 'bg-surface-sunken border border-border-default'}`}>
+            <span className={`absolute top-0.5 w-4 h-4 rounded-full bg-white transition-all shadow-sm ${watcherEnabled ? 'left-5' : 'left-0.5'}`} />
+          </button>
+          <span className={`text-[10px] font-mono ${watcherEnabled ? 'text-success' : 'text-content-tertiary'}`}>{watcherEnabled ? 'Enabled' : 'Disabled'}</span>
+        </div>
+        <button onClick={() => setShowIngestion(!showIngestion)}
+          className="flex items-center gap-1.5 px-3 py-1.5 rounded-md bg-surface-sunken border border-border-default text-content-tertiary text-[10px] font-body hover:text-white transition-all mb-3">
+          <Clock size={10} /> {showIngestion ? 'Hide' : 'Show'} Ingestion Log
+        </button>
+        {showIngestion && (
+          <div className="max-h-40 overflow-y-auto space-y-0.5 mb-3">
+            {ingestionLog.length === 0 ? (
+              <p className="text-[10px] font-body text-content-tertiary">No ingestion events yet</p>
+            ) : ingestionLog.map((e, i) => (
+              <div key={e.id || i} className="flex items-center gap-2 text-[9px] font-mono text-content-tertiary py-0.5 border-b border-border-default/10 last:border-0">
+                <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${e.status === 'done' ? 'bg-success' : e.status === 'error' ? 'bg-error' : 'bg-warning'}`} />
+                <span className="truncate flex-1">{e.filename || e.title || '—'}</span>
+                {e.error && <span className="text-error truncate max-w-[120px]" title={e.error}>{e.error}</span>}
+                <span className="text-content-tertiary/50">{e.created ? new Date(e.created + 'Z').toLocaleString() : ''}</span>
+              </div>
+            ))}
+          </div>
+        )}
       </div>
 
       <div className="bg-surface-raised border border-border-default/30 rounded-lg p-5 mb-4">

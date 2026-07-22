@@ -1,7 +1,8 @@
 import { useState, useRef, useCallback, useEffect } from 'react'
-import { expandPlaylist, previewDownloads, startDownload, uploadLocalFile, ensureCsrfToken } from '../services/grabberAPI'
+import { expandPlaylist, previewDownloads, startDownload, uploadLocalFile, getCsrfToken } from '../services/grabberAPI'
 import { showToast } from '../components/ui/StreamToast'
 import { Upload, Link, ListMusic, Play, FileAudio, X, Loader2 } from 'lucide-react'
+import { API_BASE } from '../config'
 
 interface UploadMeta { title: string; artist: string; album: string; genre: string }
 
@@ -15,10 +16,12 @@ export default function AdminUploads() {
   const [expanding, setExpanding] = useState(false)
   const [starting, setStarting] = useState(false)
   const [error, setError] = useState('')
+  const [uploadProgress, setUploadProgress] = useState(0)
+  const [uploadTotal, setUploadTotal] = useState(0)
   const dropRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLInputElement>(null)
 
-  useEffect(() => { ensureCsrfToken() }, [])
+  useEffect(() => {}, [])
 
   const handleExpand = async () => {
     if (!url.trim()) return
@@ -73,17 +76,45 @@ export default function AdminUploads() {
   const uploadAll = async () => {
     if (localFiles.length === 0) return
     setUploading(true)
+    setUploadProgress(0)
+    setUploadTotal(localFiles.length)
     let ok = 0, fail = 0
-    for (const item of localFiles) {
-      try { const res = await uploadLocalFile(item.file); if (res.ok) ok++; else fail++ } catch { fail++ }
+    for (let i = 0; i < localFiles.length; i++) {
+      const item = localFiles[i]
+      try {
+        // Use XHR for upload progress
+        const result = await uploadWithProgress(item.file, (pct) => {
+          setUploadProgress(Math.round(((i + pct / 100) / localFiles.length) * 100))
+        })
+        if (result) ok++; else fail++
+      } catch { fail++ }
+      setUploadProgress(Math.round(((i + 1) / localFiles.length) * 100))
     }
     setUploading(false)
+    setUploadProgress(0)
     if (fail === 0) { showToast(`Uploaded ${ok} file(s)`, 'success'); setLocalFiles([]) }
     else { showToast(`${ok} uploaded, ${fail} failed`, 'error') }
   }
 
+  const uploadWithProgress = (file: File, onProgress: (pct: number) => void): Promise<boolean> => {
+    return new Promise((resolve) => {
+      const formData = new FormData()
+      formData.append('file', file)
+      const xhr = new XMLHttpRequest()
+      xhr.open('POST', `${API_BASE}/api/upload/local`)
+      xhr.setRequestHeader('X-CSRF-Token', getCsrfToken() || '')
+      xhr.withCredentials = true
+      xhr.upload.onprogress = (e) => {
+        if (e.lengthComputable) onProgress(e.loaded / e.total * 100)
+      }
+      xhr.onload = () => resolve(xhr.status >= 200 && xhr.status < 300)
+      xhr.onerror = () => resolve(false)
+      xhr.send(formData)
+    })
+  }
+
   return (
-    <div className="p-6" style={{ background: '#0A0A2E' }}>
+    <div className="p-6 bg-surface-deep">
       <h2 className="text-xl font-display tracking-[3px] text-transparent bg-clip-text bg-gradient-to-r from-hot-pink to-purple mb-5 flex items-center gap-2"><Upload size={18} /> UPLOADS</h2>
 
       <div className="flex gap-2 mb-4">
@@ -148,6 +179,20 @@ export default function AdminUploads() {
         <p className="text-xs font-body text-content-tertiary">Drop audio files here or click to browse</p>
         <p className="text-[10px] font-body text-content-tertiary mt-1">MP3, FLAC, M4A, OGG, WAV, OPUS</p>
       </div>
+
+      {uploading && uploadTotal > 0 && (
+        <div className="mb-4 bg-surface-raised border border-border-default/30 rounded-lg p-4">
+          <div className="flex items-center justify-between mb-2">
+            <span className="text-[10px] font-body text-content-tertiary flex items-center gap-2">
+              <Loader2 size={10} className="animate-spin" /> Uploading...
+            </span>
+            <span className="text-[9px] font-body text-content-tertiary">{uploadProgress}%</span>
+          </div>
+          <div className="h-1.5 bg-surface-sunken rounded-full overflow-hidden">
+            <div className="h-full bg-gradient-to-r from-hot-pink to-purple rounded-full transition-all duration-300" style={{ width: `${uploadProgress}%` }} />
+          </div>
+        </div>
+      )}
 
       {localFiles.length > 0 && (
         <div className="bg-surface-raised border border-border-default/30 rounded-lg p-4 mb-4">

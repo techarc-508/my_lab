@@ -118,6 +118,15 @@ def load_stations():
         return stations
 
 def save_stations(stations):
+    import tempfile
     with _stations_lock:
-        with open(STATIONS_FILE, 'w') as f:
-            json.dump(stations, f, indent=2)
+        fd, tmp_path = tempfile.mkstemp(dir=os.path.dirname(STATIONS_FILE) or '.', suffix='.tmp')
+        try:
+            with os.fdopen(fd, 'w') as f:
+                json.dump(stations, f, indent=2)
+            os.replace(tmp_path, STATIONS_FILE)
+        except Exception:
+            try:
+                os.unlink(tmp_path)
+            except OSError:
+                pass

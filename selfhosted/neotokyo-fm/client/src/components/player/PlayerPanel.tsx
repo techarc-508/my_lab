@@ -1,7 +1,7 @@
 import { useRef, useCallback, useState } from 'react'
 import { usePlayerStore } from '../../stores/playerStore'
 import { audioEngine } from '../../services/audioEngine'
-import { Play, Pause, SkipBack, SkipForward, Shuffle, Repeat, FileText, Volume2, Volume1, VolumeX, Disc3, Heart, SlidersHorizontal, ListMusic, GripVertical, Trash2 } from 'lucide-react'
+import { Play, Pause, SkipBack, SkipForward, Shuffle, Repeat, FileText, Volume2, Volume1, VolumeX, Disc3, Heart, SlidersHorizontal, ListMusic, GripVertical, Trash2, Film } from 'lucide-react'
 import SleepTimer from './SleepTimer'
 
 function formatTime(s: number) {
@@ -37,6 +37,8 @@ export default function PlayerPanel() {
   const toggleLike = usePlayerStore(s => s.toggleLike)
   const removeFromQueue = usePlayerStore(s => s.removeFromQueue)
   const reorderQueue = usePlayerStore(s => s.reorderQueue)
+  const videoMode = usePlayerStore(s => s.videoMode)
+  const setVideoMode = usePlayerStore(s => s.setVideoMode)
   const barRef = useRef<HTMLDivElement>(null)
   const [dragIdx, setDragIdx] = useState<number | null>(null)
   const dragItem = useRef<number | null>(null)
@@ -249,6 +251,14 @@ export default function PlayerPanel() {
                   {track && (
                     <button onClick={toggleShowEqualizer} className={`transition-all duration-200 ${showEqualizer ? 'text-brand scale-110' : 'text-content-secondary hover:text-content-primary hover:scale-110'}`}>
                       <SlidersHorizontal size={16} />
+                    </button>
+                  )}
+                  {!isRadio && (
+                    <button
+                      onClick={() => setVideoMode(!videoMode)}
+                      className={`transition-all duration-200 ${videoMode ? 'text-brand scale-110' : 'text-content-secondary hover:text-content-primary hover:scale-110'}`}
+                    >
+                      <Film size={16} />
                     </button>
                   )}
                 </div>

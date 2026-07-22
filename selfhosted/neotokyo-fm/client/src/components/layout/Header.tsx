@@ -51,13 +51,13 @@ export default function Header() {
   const theme = usePlayerStore(s => s.theme)
   const toggleTheme = usePlayerStore(s => s.toggleTheme)
   return (
-    <header className="h-12 border-b border-[#2a2a4a]/50 flex items-center px-4 gap-4 shrink-0">
+    <header className="h-12 border-b border-border-subtle/50 flex items-center px-4 gap-4 shrink-0">
       <Link to="/" className="flex items-center gap-2">
         <span className="font-bold text-sm text-pink-400 tracking-wider">NEOTOKYO FM</span>
       </Link>
       <div className="flex items-center gap-2 ml-auto">
         <HeaderEQ />
-        <button onClick={toggleTheme} className="text-[#5c3f45] hover:text-white p-1" aria-label="Toggle theme">
+        <button onClick={toggleTheme} className="text-text-muted hover:text-white p-1" aria-label="Toggle theme">
           {theme === 'dark' ? <Sun size={14} /> : <Moon size={14} />}
         </button>
       </div>

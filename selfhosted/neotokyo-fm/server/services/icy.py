@@ -33,9 +33,10 @@ def parse_icy_metadata(stream_url, timeout=8):
         headers = b''
         while b'\r\n\r\n' not in headers and b'\n\n' not in headers:
             chunk = sock.recv(4096)
-            if not chunk:
-                break
+            if not chunk: break
             headers += chunk
+            if len(headers) > 65536:
+                sock.close(); return None
         m = re.search(r'icy-metaint:\s*(\d+)', headers.decode('utf-8', errors='replace'), re.IGNORECASE)
         if not m:
             sock.close()

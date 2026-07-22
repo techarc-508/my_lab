@@ -4,6 +4,11 @@ from config import DEFAULT_DOWNLOAD_DIR, HAS_YTDLP, HTTP_SESSION, FORMAT_MAP
 from utils.file_utils import extract_filename_from_url
 from models.download_state import add_download_record, get_download, update_download, _downloads_lock
 
+try:
+    from routes.admin import emit_socketio
+except Exception:
+    def emit_socketio(event, data): pass
+
 logger = logging.getLogger('batch_dl')
 
 DIRECT_AUDIO_EXTS = {'.mp3', '.m4a', '.flac', '.ogg', '.opus', '.wav', '.wma', '.aac', '.mp4', '.webm'}
@@ -114,6 +119,7 @@ def _download_direct(download_id: str, url: str, filename_hint: str, duplicates:
 
         update_download(download_id, status='completed', progress=100, filepath=final_path,
                        filename=fn, title=os.path.splitext(fn)[0], total_bytes=total, downloaded_bytes=downloaded)
+        emit_socketio('download:complete', {'id': download_id, 'filename': fn})
         logger.info(f"Direct download completed: {final_path}")
 
         try:
@@ -135,6 +141,7 @@ def _download_direct(download_id: str, url: str, filename_hint: str, duplicates:
     except Exception as e:
         logger.error(f"Direct download failed for {url}: {e}")
         update_download(download_id, status='failed', error=str(e)[:200])
+        emit_socketio('download:progress', {'id': download_id, 'status': 'failed', 'error': str(e)[:200]})
 
 def _get_ytdlp_format_opts(output_format: str | None) -> dict:
     if not output_format or output_format == 'mp3_192':
@@ -196,6 +203,7 @@ def _download_with_ytdlp(download_id: str, url: str, filename_hint: str, duplica
             if duplicates == 'skip' and os.path.isfile(final_path):
                 update_download(download_id, status='completed', progress=100, filepath=final_path,
                               title=title, uploader=uploader, filename=stem + target_ext)
+                emit_socketio('download:complete', {'id': download_id, 'filename': stem + target_ext})
                 _cleanup_temp(temp_dir)
                 return
             if duplicates == 'rename' and os.path.isfile(final_path):
@@ -220,6 +228,7 @@ def _download_with_ytdlp(download_id: str, url: str, filename_hint: str, duplica
                 os.rename(actual_path, final_path)
                 update_download(download_id, status='completed', progress=100, filepath=final_path,
                               filename=os.path.basename(final_path), title=title, uploader=uploader)
+                emit_socketio('download:complete', {'id': download_id, 'filename': os.path.basename(final_path)})
                 logger.info(f"Download completed: {final_path}")
                 try:
                     from workers.metadata import write_metadata_sidecar
@@ -228,9 +237,11 @@ def _download_with_ytdlp(download_id: str, url: str, filename_hint: str, duplica
                     logger.warning(f"Metadata tagging skipped: {e}")
             else:
                 update_download(download_id, status='failed', error='Output file not found')
+                emit_socketio('download:progress', {'id': download_id, 'status': 'failed', 'error': 'Output file not found'})
     except Exception as e:
         logger.error(f"yt-dlp download failed for {url}: {e}")
         update_download(download_id, status='failed', error=str(e)[:200])
+        emit_socketio('download:progress', {'id': download_id, 'status': 'failed', 'error': str(e)[:200]})
     _cleanup_temp(temp_dir)
 
 def _cleanup_temp(temp_dir: str):
@@ -252,8 +263,13 @@ def _progress_hook(d: dict, download_id: str):
         update_download(download_id, progress=min(percent, 99), status='running',
                       speed=int(speed), eta=int(eta),
                       total_bytes=int(total), downloaded_bytes=int(downloaded))
+        emit_socketio('download:progress', {
+            'id': download_id, 'status': 'running', 'progress': min(percent, 99),
+            'speed': int(speed), 'eta': int(eta),
+        })
     elif d['status'] == 'finished':
         update_download(download_id, progress=99, status='processing')
+        emit_socketio('download:progress', {'id': download_id, 'status': 'processing', 'progress': 99})
 
 def preview_url_ytdlp(url: str) -> dict | None:
     if not HAS_YTDLP:

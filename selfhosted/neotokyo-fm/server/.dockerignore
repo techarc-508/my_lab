@@ -1,0 +1,10 @@
+__pycache__
+*.pyc
+.env
+batch_history.db
+.flask_secret_key
+logs/
+downloads/
+.git
+.gitignore
+README.md

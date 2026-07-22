@@ -69,7 +69,7 @@ export default function AdminDownloads() {
   })
 
   return (
-    <div className="p-6" style={{ background: '#0A0A2E' }}>
+    <div className="p-6 bg-surface-deep">
       <div className="flex items-center justify-between mb-5">
         <h2 className="text-xl font-display tracking-[3px] text-transparent bg-clip-text bg-gradient-to-r from-hot-pink to-purple flex items-center gap-2"><DownloadIcon size={18} /> DOWNLOADS <span className="text-content-tertiary text-sm">({downloads.length})</span></h2>
         <div className="flex items-center gap-2">

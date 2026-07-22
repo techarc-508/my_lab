@@ -40,6 +40,9 @@ export function useKeyboardShortcuts() {
         case 's':
           store.toggleShuffle()
           break
+        case 'S':
+          store.toggleScanlines()
+          break
         case 'r':
           store.cycleRepeat()
           break

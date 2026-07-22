@@ -49,7 +49,7 @@ export function Sparkline({ data, width = 160, height = 32, color = '#FF006E' }:
   )
 }
 
-export function Donut({ percent, size = 48, strokeWidth = 4, color = '#FF006E', bgColor = 'rgba(255,255,255,0.06)' }: { percent: number; size?: number; strokeWidth?: number; color?: string; bgColor?: string }) {
+export function Donut({ percent, size = 48, strokeWidth = 4, color = '#FF006E', bgColor = 'var(--color-waveform-empty, rgba(255,255,255,0.06))' }: { percent: number; size?: number; strokeWidth?: number; color?: string; bgColor?: string }) {
   const r = (size - strokeWidth) / 2
   const circ = 2 * Math.PI * r
   const dash = (percent / 100) * circ

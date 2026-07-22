@@ -82,7 +82,7 @@ elif [[ -n "$GIT_REPO" ]]; then
   git clone "$GIT_REPO" "$INSTALL_DIR"
 else
   warn "No --source or --git provided. Cloning default repo..."
-  git clone https://github.com/anomalyco/mini_radio.git "$INSTALL_DIR"
+  git clone https://github.com/techarc-508/my_lab.git "$INSTALL_DIR"
 fi
 
 cd "$INSTALL_DIR"

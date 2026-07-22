@@ -47,7 +47,7 @@ export default function AdminBrowse() {
   }
 
   return (
-    <div className="p-6" style={{ background: '#0A0A2E' }}>
+    <div className="p-6 bg-surface-deep">
       <div className="flex items-center justify-between mb-4">
         <h2 className="text-xl font-display tracking-[3px] text-transparent bg-clip-text bg-gradient-to-r from-hot-pink to-purple flex items-center gap-2"><Folder size={18} /> FILE BROWSER</h2>
         <div className="flex items-center gap-2">

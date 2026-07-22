@@ -72,7 +72,7 @@ export default function Equalizer() {
               <span className="text-[9px] font-mono text-content-tertiary">{gain > 0 ? `+${gain}` : gain}</span>
               <div
                 className="w-full flex-1 relative rounded-sm cursor-pointer group"
-                style={{ background: 'linear-gradient(to top, #060620, #12123A)' }}
+                style={{ background: 'linear-gradient(to top, var(--color-surface-deep), var(--color-surface-sunken))' }}
                 onMouseDown={(e) => handleMouseDown(i, e)}
               >
                 <div

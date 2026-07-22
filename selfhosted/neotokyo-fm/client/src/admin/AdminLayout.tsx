@@ -3,12 +3,13 @@ import { Outlet, NavLink, useNavigate } from 'react-router-dom'
 import RequireAuth from './RequireAuth'
 import { logout } from '../services/grabberAPI'
 import { usePlayerStore } from '../stores/playerStore'
-import { BarChart3, Download, Radio, Shield, Settings, FileText, Globe, Music, LogOut, MicVocal, Image, FolderOpen, Headphones } from 'lucide-react'
+import { BarChart3, Download, Radio, Rss, Shield, Settings, FileText, Globe, Music, LogOut, MicVocal, Image, FolderOpen, Headphones, Users } from 'lucide-react'
 
 const navItems = [
   { to: '/admin', icon: BarChart3, label: 'Dashboard', end: true },
   { to: '/admin/import', icon: Download, label: 'Import' },
   { to: '/admin/radio', icon: Radio, label: 'Radio' },
+  { to: '/admin/podcasts', icon: Rss, label: 'Podcasts' },
   { to: '/admin/songs', icon: Music, label: 'Songs' },
   { to: '/admin/lyrics', icon: MicVocal, label: 'Lyrics' },
   { to: '/admin/browse', icon: FolderOpen, label: 'Browse' },
@@ -17,6 +18,7 @@ const navItems = [
   { to: '/admin/backups', icon: Shield, label: 'Backups' },
   { to: '/admin/settings', icon: Settings, label: 'Settings' },
   { to: '/admin/logs', icon: FileText, label: 'Logs' },
+  { to: '/admin/users', icon: Users, label: 'Users' },
 ]
 
 export default function AdminLayout() {
@@ -32,7 +34,7 @@ export default function AdminLayout() {
 
   return (
     <RequireAuth>
-      <div className="h-full flex" style={{ background: '#0A0A2E' }}>
+      <div className="h-full flex bg-surface-deep">
         <aside className="w-56 bg-surface-base border-r border-border-default/50 flex flex-col shrink-0">
           <div className="p-5 border-b border-border-default/30">
             <h2 className="text-lg font-display tracking-[2px] text-transparent bg-clip-text bg-gradient-to-r from-hot-pink to-purple leading-none">

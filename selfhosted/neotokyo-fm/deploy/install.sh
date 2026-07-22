@@ -79,6 +79,9 @@ if [[ -n "$SOURCE_DIR" ]]; then
         --exclude='server/logs' \
         "$SOURCE_DIR/" "$INSTALL_DIR/"
     log "Project copied from local source (includes media)."
+elif ls "$INSTALL_DIR/server/downloads/"*.mp3 &>/dev/null 2>&1; then
+    # Files already exist (pushed by proxmox-helper.sh with media)
+    info "Project files already present (with media), skipping download."
 else
     # Download code-only tarball
     info "Downloading NEOTOKYO FM (~373KB)..."

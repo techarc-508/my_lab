@@ -132,3 +132,111 @@ export interface AlbumArtResult {
   genre: string
   release_date: string
 }
+
+export interface AuthResponse {
+  auth: boolean
+  username?: string
+  role?: string
+  token?: string
+}
+
+export interface UserRecord {
+  id: number
+  username: string
+  role: string
+  created_at: string
+  email?: string
+  display_name?: string
+  avatar_path?: string
+  is_active?: number
+}
+
+export interface UserProfile {
+  id: number
+  username: string
+  role: string
+  email: string
+  email_verified: number
+  display_name: string
+  avatar_path: string
+  created_at: string
+  is_active: number
+  sessions: Session[]
+}
+
+export interface Session {
+  id: number
+  created: string
+  expires: string
+  ip: string
+}
+
+export interface UpdateInfo {
+  current: string
+  latest: string
+  update_available: boolean
+  release_notes: string
+}
+
+export interface IngestionEvent {
+  id: number
+  filename: string
+  status: string
+  source: string
+  title: string
+  artist: string
+  error: string
+  created: string
+}
+
+export interface Podcast {
+  id: number
+  feed_url: string
+  title: string
+  description: string
+  author: string
+  image_url: string
+  link: string
+  category: string
+  auto_download: number
+  last_synced: string
+  error: string
+  created: string
+  user_id: number
+  unplayed: number
+  episode_count: number
+}
+
+export interface PodcastProgress {
+  id: number
+  episode_id: number
+  position: number
+  duration: number
+  updated_at: string
+}
+
+export interface PodcastCategory {
+  category: string
+  count: number
+}
+
+export interface PodcastEpisode {
+  id: number
+  podcast_id: number
+  guid: string
+  title: string
+  description: string
+  enclosure_url: string
+  enclosure_type: string
+  enclosure_length: number
+  duration: number
+  pub_date: string
+  image_url: string
+  link: string
+  downloaded: number
+  download_path: string
+  played: number
+  played_at: string
+  created: string
+  progress?: PodcastProgress
+}

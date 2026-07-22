@@ -1,0 +1,43 @@
+[
+  {
+    "name": "Liked Songs",
+    "tracks": [
+      {
+        "title": "The Weeknd - Out of Time",
+        "artist": "The Weeknd",
+        "url": "/api/yt-proxy/2fDzCWNS3ig"
+      },
+      {
+        "artist": "",
+        "title": "Tame Impala   Borderline  Official Audio",
+        "url": "/api/audio/Tame_Impala___Borderline__Official_Audio_.mp4"
+      },
+      {
+        "artist": "TheBilzKashifVEVO",
+        "title": "The Bilz & Kashif - Tere Nainon Mein",
+        "url": "/api/audio/The%20Bilz%20%26%20Kashif%20-%20Tere%20Nainon%20Mein%20-%20TheBilzKashifVEVO.mp3"
+      },
+      {
+        "artist": "SVF Music",
+        "title": "Bojhabo Ki Kore | Haripada Bandwala | Ankush | Nusrat | Arijit | Anwesshaa | Indraadip | SVF Music",
+        "url": "/api/audio/Bojhabo%20Ki%20Kore%20_%20Haripada%20Bandwala%20_%20Ankush%20_%20Nusrat%20_%20Arijit%20_%20Anwesshaa%20_%20Indraadip%20_%20SVF%20Music%20-%20SVF%20Music.mp3"
+      },
+      {
+        "artist": "Tips Official",
+        "title": "Tere Liye - Lyrical - Prince | Vivek Oberoi | Atif Aslam, Shreya Ghoshal | Sachin Gupta |Dance Songs",
+        "url": "/api/audio/Tere%20Liye%20-%20Lyrical%20-%20Prince%20_%20Vivek%20Oberoi%20_%20Atif%20Aslam%2C%20Shreya%20Ghoshal%20_%20Sachin%20Gupta%20_Dance%20Songs%20-%20Tips%20Official.mp3"
+      },
+      {
+        "artist": "T-Series Bollywood Classics",
+        "title": "Teri Yaadon Mein Lyrical Video | The Killer | K K, Shreya Ghosal | Emraan Hashmi, Nisha Kothari",
+        "url": "/api/audio/Teri%20Yaadon%20Mein%20Lyrical%20Video%20_%20The%20Killer%20_%20K%20K%2C%20Shreya%20Ghosal%20_%20Emraan%20Hashmi%2C%20Nisha%20Kothari%20-%20T-Series%20Bollywood%20Cla.mp3"
+      }
+    ],
+    "created": 1782993001.4014819
+  },
+  {
+    "name": "Afro Mixes \u2764\ufe0f\u266b\u22c6\uff61\u266a \u208a\u02da\u266c \uff9f.",
+    "tracks": [],
+    "created": 1783015493.6307998
+  }
+]
