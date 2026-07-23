@@ -1,5 +1,13 @@
 # AGENTS.md — NEOTOKYO FM
 
+## Secrets
+
+All credentials are in `/mnt/data/projects/mini_radio/.secrets.env` (gitignored). Load before any deploy or production command:
+
+```bash
+source /mnt/data/projects/mini_radio/.secrets.env
+```
+
 ## Quick Reference
 
 | Item | Value |
