@@ -51,9 +51,9 @@ README/docs reference stale `grabbar/retro-music-player/` and `player/neotokyo-f
 
 | Item | Value |
 |------|-------|
-| PVE host | `192.168.0.113` |
-| Container | ct-104, IP `192.168.0.104` |
-| SSH to PVE | `ssh root@192.168.0.113` (pw: `wIldvs550Z10lg*!`) |
+| PVE host | `<PVE_HOST>` (see `.secrets.env`) |
+| Container | ct-104, IP `<CT_IP>` (see `.secrets.env`) |
+| SSH to PVE | `ssh root@<PVE_HOST>` (pw in `.secrets.env`) |
 | Container commands | `pct exec 104 -- <cmd>` |
 | Install dir | `/opt/neotokyo-fm` |
 | Docker compose | `cd /opt/neotokyo-fm && docker compose up --build -d` |
@@ -67,7 +67,7 @@ ADMIN_PASSWORD=<random 16-char hex>
 FLASK_SECRET_KEY=<random 32-char hex>
 ```
 
-Current production admin credentials: `admin` / `95c1daa850174232`
+Current production admin credentials: see `.secrets.env`
 
 ### Deploy Script (`scripts/deploy-pve.sh`)
 
@@ -87,7 +87,8 @@ Safe PVE deploy with state preservation:
 
 ```bash
 cd /mnt/data/projects/mini_radio
-bash scripts/deploy-pve.sh 192.168.0.113 104 'wIldvs550Z10lg*!'
+source .secrets.env
+bash scripts/deploy-pve.sh "$PVE_HOST" 104 "$PVE_PASSWORD"
 ```
 
 ## Architecture

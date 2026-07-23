@@ -1,6 +1,7 @@
 # Secrets
 *.conf
 !.example
+.secrets.env
 
 # OS
 .DS_Store
