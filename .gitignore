@@ -40,3 +40,13 @@ selfhosted/*/server/downloads/**
 .idea/
 .vscode/
 *.sublime-*
+
+# Desktop control panel scripts (user-local)
+neotokyo-panel.sh
+neotokyo-control-panel.sh
+
+# Session artifacts
+New Empty File
+
+# Generated icon intermediates (regenerate via scripts/generate-icons.py)
+generated-icons/

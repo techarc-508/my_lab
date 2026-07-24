@@ -87,7 +87,7 @@ def create_app():
 
     @app.route('/')
     def index():
-        return jsonify({'app': 'NEOTOKYO FM', 'version': '5.1', 'status': 'ok'})
+        return jsonify({'app': 'NEOTOKYO FM', 'version': '5.2', 'status': 'ok'})
 
     @app.route('/api/csrf-token')
     def get_csrf_token():
@@ -107,7 +107,7 @@ def create_app():
             f'neotokyo_uptime_seconds {uptime}',
             '# HELP neotokyo_build_info Build info',
             '# TYPE neotokyo_build_info gauge',
-            'neotokyo_build_info{version="2.0",python="3.12"} 1',
+            'neotokyo_build_info{version="5.2",python="3.12"} 1',
         ]
         try:
             files = [f for f in os.listdir(DEFAULT_DOWNLOAD_DIR) if os.path.isfile(os.path.join(DEFAULT_DOWNLOAD_DIR, f))]

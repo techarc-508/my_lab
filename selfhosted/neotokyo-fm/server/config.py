@@ -56,7 +56,7 @@ _MAX_UPLOAD_MB = int(os.environ.get('MAX_UPLOAD_MB', '32'))
 _MAX_CONTENT_LENGTH = _MAX_UPLOAD_MB * 1024 * 1024
 _MAX_DOWNLOAD_AGE_DAYS = int(os.environ.get('MAX_DOWNLOAD_AGE_DAYS', '7'))
 TELEMETRY_SAMPLE_RATE = int(os.environ.get('TELEMETRY_SAMPLE_RATE', '100'))
-APP_VERSION = os.environ.get('APP_VERSION', '5.1')
+APP_VERSION = os.environ.get('APP_VERSION', '5.2')
 WATCHER_ENABLED = os.environ.get('WATCHER_ENABLED', '0') == '1'
 MUSICBRAINZ_ENABLED = os.environ.get('MUSICBRAINZ_ENABLED', '1') == '1'
 UPDATE_REPO = os.environ.get('UPDATE_REPO', 'origin/main')

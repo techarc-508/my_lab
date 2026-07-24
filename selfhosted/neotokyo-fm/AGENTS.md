@@ -19,7 +19,7 @@ source /mnt/data/projects/mini_radio/.secrets.env
 | Frontend dev | `http://192.168.0.200:5173/` (Vite, `--host 0.0.0.0 --port 5173`) |
 | Backend dev | `http://192.168.0.200:5050` (`python3 app.py`) |
 | Production URL | `http://192.168.0.104:5050` |
-| Current version | client `5.1.0`, server `5.1` |
+| Current version | client `5.2.0`, server `5.2` |
 
 ## Project Layout
 
@@ -183,7 +183,15 @@ Fixes stale hash mismatch after deploys when `.env` has different password than 
 |-----|--------|-------------|
 | `neotokyo-fm-v1` | `926f8ba` | Original repo (correct structure, v2.0.0) |
 | `v5.0` | `6c5e541` | YouTube video player + admin redesign (5.0.0) |
-| `v5.1` | `014cb0c` | **Current main** — production hardened (5.1.0) |
+| `v5.1` | `014cb0c` | Production hardened (5.1.0) |
+| `v5.2` | `HEAD` | **Current main** — PWA install + desktop panel (5.2.0) |
+
+### v5.2 Changelog
+
+- **PWA install fixed**: Proper PNG icons generated (192x192, 512x512), manifest updated, apple-touch-icon added
+- **InstallPrompt rewritten**: Captures `beforeinstallprompt` immediately, centered retro-wave card modal, works cross-platform (Windows, macOS, Android, iOS)
+- **Desktop control panel**: `neotokyo-panel.sh` at `~/Desktop/` — PVE container check + full Neotokyo dashboard (health, stats, scanner, analytics) via API
+- **`scripts/generate-icons.py`**: Generates retro-wave cassette PNG icons from favicon SVG
 
 ### v5.1 Changelog
 
